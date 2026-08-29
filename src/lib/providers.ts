@@ -34,7 +34,16 @@ export interface ForgeSettings {
   writeCsvOnSync: boolean;
   metaPrompts: { promptWriter: string; filenameForger: string; stylePicker: string; wpMeta: string; factory: string };
   wp: { url: string; user: string; appPassword: string };
-  ambient: { dots: boolean; glow: boolean; sparkle: boolean };
+  ambient: {
+    accent: string;
+    background: "none" | "dots" | "embers" | "stars";
+    density: number;
+    wave: boolean;
+    sparkle: boolean;
+    glow: "off" | "accent" | "prismatic";
+    cursor: "none" | "lantern" | "sparks";
+    cursorSize: number;
+  };
   customStyles: { id: string; name: string; block: string }[];
 }
 
@@ -51,7 +60,16 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   writeCsvOnSync: true,
   metaPrompts: { promptWriter: "", filenameForger: "", stylePicker: "", wpMeta: "", factory: "" },
   wp: { url: "", user: "", appPassword: "" },
-  ambient: { dots: true, glow: true, sparkle: true },
+  ambient: {
+    accent: "ember",
+    background: "dots",
+    density: 55,
+    wave: true,
+    sparkle: true,
+    glow: "accent",
+    cursor: "lantern",
+    cursorSize: 240,
+  },
   customStyles: [],
 };
 
@@ -62,7 +80,16 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     wp: { ...DEFAULT_SETTINGS.wp, ...(s.wp ?? {}) },
-    ambient: { ...DEFAULT_SETTINGS.ambient, ...(s.ambient ?? {}) },
+    ambient: (() => {
+      const a = (s.ambient ?? {}) as Partial<ForgeSettings["ambient"]> & { dots?: boolean; glow?: boolean };
+      const migrated: Partial<ForgeSettings["ambient"]> = { ...a };
+      // legacy boolean toggles → new structured choices
+      if (typeof a.background !== "string" && typeof a.dots === "boolean") migrated.background = a.dots ? "dots" : "none";
+      if (typeof a.glow !== "string" && typeof (a as { glow?: boolean }).glow === "boolean")
+        migrated.glow = (a as { glow?: boolean }).glow ? "accent" : "off";
+      delete (migrated as { dots?: boolean }).dots;
+      return { ...DEFAULT_SETTINGS.ambient, ...migrated };
+    })(),
     customStyles: s.customStyles ?? [],
     geminiKeys: s.geminiKeys?.length ? s.geminiKeys : DEFAULT_SETTINGS.geminiKeys,
     openaiKeys: s.openaiKeys?.length ? s.openaiKeys : DEFAULT_SETTINGS.openaiKeys,
@@ -424,12 +451,18 @@ export async function scribeChat(
 }
 
 export const SCRIBE_SYSTEMS = {
-  promptWriter: (styleBlock: string, category: string, override?: string) =>
+  promptWriter: (styleBlock: string, category: string, kindFlavor = "", override?: string) =>
     override?.trim() ||
     `You are the prompt scribe of an image generation forge (category: ${category}).
-Rewrite the user's short description into ONE vivid image prompt, 35–60 words, concrete nouns, warm light, no camera jargon.
+Rewrite the user's short description into ONE vivid image prompt, 35–60 words, concrete nouns, strong light, no camera jargon.
+${kindFlavor ? `The subject world is: ${kindFlavor}. Weave that flavor in naturally. ` : "Keep the subject world exactly as the user describes it — add no genre of your own. "}
 You MUST end the prompt with exactly this style block, verbatim: ", ${styleBlock}".
 Reply with the prompt only — no quotes, no preamble.`,
+  styleCrafter: (override?: string) =>
+    override?.trim() ||
+    `You are the style smith of an image forge. The user describes a visual look in plain words.
+Invent a NEW visual style for image prompts: a short kebab-case id (lowercase, dashes), a display Name, and a style block of 8–16 words describing ONLY the artistic medium (technique, materials, lighting, composition) — never the subject world.
+Reply with valid JSON only, no markdown fences: {"id":"my-style","name":"My Style","block":"..."}`,
   filenameForger: (category: string, override?: string) =>
     override?.trim() ||
     `You are the filename forger. From the user's image prompt, invent ONE filename that obeys ALL rules:
@@ -443,13 +476,19 @@ Pick the single best style id for the user's subject and reply with EXACTLY one 
     override?.trim() ||
     `You craft WordPress attachment metadata for a marketplace image. From the user's filename + prompt, reply with valid JSON only, no markdown fences:
 {"title": "Human readable title", "alt": "descriptive alt text under 125 chars, no keyword stuffing", "caption": "one charming sentence for the shop card"}`,
-  factory: (styleBlock: string, override?: string) =>
+  factory: (kindFlavor: string, kindNegative: string, filenameTag: string, styleBlock: string | null, override?: string) =>
     override?.trim() ||
-    `You are the prompt factory of an image forge. The user gives a theme and a count. Invent that many DIFFERENT picture ideas for a fantasy marketplace.
+    `You are the prompt factory of an image forge. The user gives a theme and a count. Invent that many DIFFERENT picture ideas${
+      kindFlavor ? ` for this subject world: ${kindFlavor}` : " — keep them genre-neutral unless the theme implies otherwise"
+    }.
 Rules for every idea:
-- filename: lowercase, underscores only, starts with its category prefix (shop_ / item_ / event_ / npc_), ends with .png, max 4 words after the prefix
-- prompt: 30–55 words, concrete nouns, warm light, MUST end verbatim with ", ${styleBlock}"
-- negative_prompt: a short comma list of things to avoid (e.g. "text, watermark, extra fingers, modern objects")
+- filename: lowercase, underscores only, starts with its category prefix (shop_ / item_ / event_ / npc_), ${
+      filenameTag ? `then the world tag "${filenameTag}_", ` : ""
+    }then up to 3 subject words, ends with .png (example shape: item_${filenameTag ? filenameTag + "_" : ""}healing_flask.png)
+- prompt: RICH — 45–80 words across 2–3 sentences: subject & materials first, then lighting & mood, then one telling detail. No camera jargon.${
+      styleBlock ? ` MUST end verbatim with ", ${styleBlock}".` : " Do NOT append any style words — the visual style is added later."
+    }
+- negative_prompt: start with "${kindNegative}" and add 2–4 subject-specific avoids
 - category: one of shop | item | event | npc (mix them)
 Reply with ONLY a JSON object, no markdown fences:
 {"rows":[{"filename":"shop_...png","prompt":"...","negative_prompt":"...","category":"shop"}, ...]}`,

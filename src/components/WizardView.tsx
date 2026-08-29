@@ -1,40 +1,82 @@
-import { useMemo, useState } from "react";
-import type { Category } from "../types";
-import { ASPECTS, STYLES } from "../types";
-import type { ForgeSettings } from "../lib/providers";
-import { MODELS, newKey } from "../lib/providers";
-import type { BatchSetup, FactoryItem, SavedSetup } from "../lib/batches";
-import { DEFAULT_SETUP, generateIdeas, ideaCategories } from "../lib/batches";
+import { useState, type ReactNode } from "react";
+import type { AspectKey, Category, Toast } from "../types";
+import { ASPECTS, ASPECT_KEYS, CATEGORY_META, KINDS, STYLES, kindById } from "../types";
+import type { ForgeSettings, ProviderId } from "../lib/providers";
+import { MODELS, PROVIDER_META, modelOptions } from "../lib/providers";
 import { fsSupported } from "../lib/output";
+import type { BatchSetup, FactoryItem, SavedSetup } from "../lib/batches";
+import { DEFAULT_SETUP } from "../lib/batches";
+import { autoFixFilename, validateFilename } from "../lib/validate";
 import PromptFactory from "./PromptFactory";
 import { BorderGlow } from "./effects";
-import { Btn, ICheck, IChevron, IFolder, IPlay, IQuill, ISparkle, IWand, IX } from "./ui";
-import type { FolderState } from "./SettingsDrawer";
+import { Btn, CatChip, IAlert, ICheck, IFolder, IGear, IPlay, IX } from "./ui";
 
-interface StepDef {
-  id: string;
-  title: string;
-  plain: string;
+const STEPS = [
+  { name: "Name it", short: "what is this batch for?" },
+  { name: "Pick a world", short: "the flavor in every picture" },
+  { name: "List the pictures", short: "what should we make?" },
+  { name: "Pick a look", short: "one visual style for all" },
+  { name: "Pick a painter", short: "who draws the pictures?" },
+  { name: "Pick a shape", short: "wide, square or tall" },
+  { name: "Pick a home", short: "where the files land" },
+  { name: "The little extras", short: "save recipe · start now" },
+  { name: "Ready!", short: "read and press go" },
+];
+
+const card = "rounded-xl border border-line bg-panel/50 px-4 py-3.5";
+const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60";
+
+function Explain({ children }: { children: ReactNode }) {
+  return <p className="mt-3 rounded-lg border border-line/70 bg-[#191310] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-parch">{children}</p>;
 }
 
-const STEPS: StepDef[] = [
-  { id: "start", title: "Fresh or saved?", plain: "Every batch starts with one question: brand new, or build on something you already set up?" },
-  { id: "name", title: "Name the batch", plain: "A short name helps you find this batch later. Like a label on a box of drawings." },
-  { id: "style", title: "Pick the look", plain: "One look for every picture in this batch — so they all feel like they belong together." },
-  { id: "model", title: "Pick the painter", plain: "Who draws the pictures? Some painters are free forever, some need a key. If a painter needs a key, you add it right here." },
-  { id: "sizes", title: "Picture shape", plain: "Wide shapes suit shop fronts and street scenes. Square shapes suit item icons." },
-  { id: "ideas", title: "What pictures?", plain: "The biggest step. Let the AI write a big list of picture ideas, paste your own list, or upload a CSV file." },
-  { id: "avoid", title: "What to avoid?", plain: "Optional. Tell the painter what must NOT appear — like “no text, no watermarks”. Applies to every picture unless one says otherwise." },
-  { id: "output", title: "Where do they go?", plain: "Pick a folder on your computer and every finished picture saves itself there, sorted into sub-folders." },
-  { id: "go", title: "Ready!", plain: "One last look, then the forge takes over. You can also save this setup as a recipe for next time." },
-];
-
-const MODEL_GROUPS: { label: string; ids: string[]; hint: string }[] = [
-  { label: "Free · no key needed", ids: ["flux", "turbo"], hint: "real AI pictures, unlimited fair use, can be slower" },
-  { label: "Google Imagen · free daily allowance", ids: ["imagen-4-ultra", "imagen-4", "imagen-4-fast", "gemini-flash-image"], hint: "≈ 25 pictures per day per model, per key" },
-  { label: "OpenAI-compatible", ids: ["dall-e-3", "gpt-image-1"], hint: "OpenAI or any endpoint that speaks its language" },
-  { label: "Offline", ids: ["forge"], hint: "practice run — the forge paints placeholder plates, no internet" },
-];
+function AccordionItem({
+  i,
+  item,
+  open,
+  onToggle,
+  onPatch,
+  kindTag,
+}: {
+  i: number;
+  item: FactoryItem;
+  open: boolean;
+  onToggle: () => void;
+  onPatch: (p: Partial<FactoryItem>) => void;
+  kindTag: string;
+}) {
+  const cat: Category = item.category ?? "item";
+  return (
+    <div className={`overflow-hidden rounded-xl border transition-colors ${open ? "border-line2 bg-panel/70" : "border-line bg-panel/40"}`}>
+      <button onClick={onToggle} className="btn-press flex w-full items-center gap-3 px-4 py-3 text-left">
+        <span
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] transition-transform duration-300 ${
+            open ? "rotate-90 border-ember/60 text-ember" : "border-line2 text-dust"
+          }`}
+        >
+          ▸
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[12px] text-cream">
+            <span className="text-dust">{String(i + 1).padStart(2, "0")} · </span>
+            {item.filename || "unnamed picture"}
+          </span>
+          {!open && <span className="block truncate text-[11px] text-dust">{item.prompt || "no prompt yet"}</span>}
+        </span>
+        <CatChip category={cat} />
+        {kindTag && <span className="rounded-md border border-potion/35 bg-potion/8 px-1.5 py-0.5 font-mono text-[9.5px] text-potion">{kindTag}</span>}
+      </button>
+      {open && (
+        <div className="rise-in border-t border-line/70 px-4 py-3.5">
+          <label className="mb-1 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">prompt — the full instructions</label>
+          <textarea value={item.prompt} onChange={(e) => onPatch({ prompt: e.target.value })} rows={3} className={field + " resize-y text-[12.5px]"} />
+          <label className="mb-1 mt-3 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">negative prompt — things to avoid</label>
+          <textarea value={item.negative_prompt ?? ""} onChange={(e) => onPatch({ negative_prompt: e.target.value || undefined })} rows={2} className={field + " resize-y text-[12px] text-blood/80"} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function WizardView({
   preset,
@@ -47,423 +89,570 @@ export default function WizardView({
   onExit,
   pushToast,
 }: {
-  preset: SavedSetup | null;
+  preset?: SavedSetup | null;
   setups: SavedSetup[];
   settings: ForgeSettings;
   patchSettings: (p: Partial<ForgeSettings>) => void;
-  folder: FolderState;
+  folder: { linked: boolean; name: string };
   onLinkFolder: () => void;
   onFinish: (setup: BatchSetup, items: FactoryItem[], saveTemplateAs: string | null) => void;
   onExit: () => void;
-  pushToast: (kind: "ok" | "err" | "info", msg: string) => void;
+  pushToast: (kind: Toast["kind"], msg: string) => void;
 }) {
-  const [step, setStep] = useState(preset ? 1 : 0);
+  const [step, setStep] = useState(0);
   const [setup, setSetup] = useState<BatchSetup>(
-    preset ? { ...preset.data, name: preset.data.name ? `${preset.data.name} (copy)` : "" } : { ...DEFAULT_SETUP, name: `Batch ${new Date().toLocaleDateString("en-GB")}` }
+    preset ? { ...preset.data } : { ...DEFAULT_SETUP, name: `Batch ${new Date().toLocaleDateString("en-GB")}` }
   );
   const [items, setItems] = useState<FactoryItem[]>([]);
-  const [recipeName, setRecipeName] = useState("");
+  const [saveName, setSaveName] = useState("");
+  const [wantSave, setWantSave] = useState(false);
+  const [geminiUrl, setGeminiUrl] = useState("https://generativelanguage.googleapis.com/v1beta");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [geminiModel, setGeminiModel] = useState("imagen-4");
+  const [oaiUrl, setOaiUrl] = useState(settings.openaiBase || "https://api.openai.com/v1");
+  const [oaiKey, setOaiKey] = useState("");
+  const [oaiModel, setOaiModel] = useState(settings.openaiModel || "gpt-image-1");
+  const [openMap, setOpenMap] = useState<Record<number, boolean>>({});
 
   const patch = (p: Partial<BatchSetup>) => setSetup((s) => ({ ...s, ...p }));
-  const allStyles = useMemo(
-    () => [
-      ...STYLES,
-      ...settings.customStyles.map((c) => ({ ...c, swatch: ["#f4e8d4", "#97876d", "#57432c"] as [string, string, string] })),
-    ],
-    [settings.customStyles]
-  );
-  const styleDef = allStyles.find((s) => s.id === setup.styleId) ?? allStyles[0];
+  const kind = kindById(setup.kind);
+  const allStyles = [
+    ...STYLES,
+    ...settings.customStyles.map((c) => ({ ...c, swatch: ["#f4e8d4", "#97876d", "#57432c"] as [string, string, string] })),
+  ];
+  const styleDef = allStyles.find((s) => s.id === setup.styleId);
 
-  const geminiHealthy = settings.geminiKeys.some((k) => k.key.trim() && k.exhaustedUntil <= Date.now());
-  const openaiHealthy = settings.openaiKeys.some((k) => k.key.trim() && k.exhaustedUntil <= Date.now());
-  const modelReady = (id: string) => {
-    if (id === "flux" || id === "turbo" || id === "forge") return true;
-    if (id.startsWith("imagen") || id.startsWith("gemini")) return geminiHealthy;
-    return openaiHealthy;
+  const geminiReady = settings.geminiKeys.some((k) => k.key.trim());
+  const openaiReady = settings.openaiKeys.some((k) => k.key.trim());
+
+  const applyGemini = () => {
+    patchSettings({
+      geminiKeys: [{ id: `k${Date.now()}`, label: "wizard-key", key: geminiKey.trim(), exhaustedUntil: 0 }],
+    });
+    patch({ model: geminiModel });
+    pushToast("ok", "Google key saved — the wizard picked it as the painter.");
+  };
+  const applyOpenai = () => {
+    patchSettings({
+      openaiBase: oaiUrl.trim() || "https://api.openai.com/v1",
+      openaiKeys: [{ id: `k${Date.now()}`, label: "wizard-key", key: oaiKey.trim(), exhaustedUntil: 0 }],
+      openaiModel: oaiModel.trim() || "gpt-image-1",
+    });
+    patch({ model: oaiModel.trim() || "gpt-image-1" });
+    pushToast("ok", "Endpoint saved — the wizard picked it as the painter.");
   };
 
-  const needsKeyInline = (id: string): "geminiKeys" | "openaiKeys" | null => {
-    if (id.startsWith("imagen") || id.startsWith("gemini")) return geminiHealthy ? null : "geminiKeys";
-    if (id === "dall-e-3" || id === "gpt-image-1") return openaiHealthy ? null : "openaiKeys";
-    return null;
-  };
-
-  const [keyDraft, setKeyDraft] = useState("");
-  const keyPool = needsKeyInline(setup.model);
-  const saveKey = () => {
-    if (!keyDraft.trim()) return;
-    if (keyPool === "geminiKeys") patchSettings({ geminiKeys: [...settings.geminiKeys.filter((k) => k.key.trim()), { ...newKey(`key-${settings.geminiKeys.length + 1}`), key: keyDraft.trim() }] });
-    else patchSettings({ openaiKeys: [...settings.openaiKeys.filter((k) => k.key.trim()), { ...newKey(`key-${settings.openaiKeys.length + 1}`), key: keyDraft.trim() }] });
-    setKeyDraft("");
-    pushToast("ok", "Key saved — you can add more any time in Settings → Image engines. The forge swaps to the next one automatically on a rate limit.");
-  };
-
-  const canNext = () => {
-    switch (STEPS[step].id) {
-      case "start": return false;
-      case "name": return setup.name.trim().length > 0;
-      case "style": return true;
-      case "model": return setup.model.length > 0;
-      case "sizes": return true;
-      case "ideas": return items.some((i) => i.filename.trim() && i.prompt.trim());
-      case "avoid": return true;
-      case "output": return true;
-      default: return true;
+  const canNext = (): boolean => {
+    switch (step) {
+      case 0:
+        return setup.name.trim().length > 0;
+      case 1:
+        return true;
+      case 2:
+        return items.filter((i) => i.filename.trim() && i.prompt.trim()).length > 0;
+      case 3:
+      case 4:
+      case 5:
+      case 6:
+        return true;
+      case 7:
+        return !wantSave || saveName.trim().length > 0;
+      default:
+        return true;
     }
   };
 
-  const finish = () => {
-    const clean = items.filter((i) => i.filename.trim() && i.prompt.trim());
-    onFinish({ ...setup, name: setup.name.trim() }, clean, recipeName.trim() || null);
+  const next = () => {
+    if (step === 6 && setup.linkFolder && !folder.linked && fsSupported()) onLinkFolder();
+    setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const stepDef = STEPS[step];
+  const openAll = () => setOpenMap(Object.fromEntries(items.map((_, i) => [i, true])));
+  const closeAll = () => setOpenMap({});
+  const allOpen = items.length > 0 && items.every((_, i) => openMap[i]);
+
+  const chosenModel = MODELS.find((m) => m.id === setup.model);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      {/* progress rail */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <p className="font-mono text-[11px] tracking-[0.28em] text-ember uppercase">batch wizard</p>
-          <button onClick={onExit} className="btn-press flex items-center gap-1.5 font-mono text-[10.5px] text-dust hover:text-cream">
-            <IX size={11} /> leave the wizard
+    <div className="mx-auto flex h-full w-full max-w-6xl gap-8 px-6 py-8">
+      {/* step rail */}
+      <aside className="hidden w-[230px] shrink-0 md:block">
+        <p className="mb-4 font-mono text-[10px] tracking-[0.25em] text-ember uppercase">new batch · {step + 1}/{STEPS.length}</p>
+        <ol className="space-y-1">
+          {STEPS.map((s, i) => {
+            const done = i < step;
+            const active = i === step;
+            return (
+              <li key={s.name}>
+                <button
+                  onClick={() => i < step && setStep(i)}
+                  className={`btn-press flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                    active ? "border-ember/55 bg-ember/8" : done ? "border-line bg-panel/40 hover:border-line2" : "border-transparent opacity-55"
+                  }`}
+                >
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[11px] ${
+                      done ? "border-moss/60 bg-moss/15 text-moss" : active ? "border-ember bg-ember text-[#241503]" : "border-line2 text-dust"
+                    }`}
+                  >
+                    {done ? <ICheck size={11} /> : i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-[13px] font-semibold leading-tight ${active ? "text-cream" : done ? "text-parch" : "text-dust"}`}>{s.name}</span>
+                    <span className="block truncate text-[10.5px] text-dust">{s.short}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        {setups.length > 0 && step === 0 && !preset && (
+          <div className="mt-5 rounded-xl border border-potion/30 bg-potion/6 p-3">
+            <p className="font-mono text-[9.5px] tracking-[0.2em] text-potion uppercase">start from a recipe</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {setups.slice(0, 4).map((t) => (
+                <button key={t.id} onClick={() => setSetup({ ...t.data })} className="btn-press rounded-md border border-line bg-panel/60 px-2 py-1 font-mono text-[10px] text-parch hover:border-potion/50 hover:text-potion">
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </aside>
+
+      {/* step body */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[10.5px] tracking-[0.25em] text-dust uppercase">
+              step {step + 1} of {STEPS.length}
+            </p>
+            <h2 className="mt-1 font-display text-3xl text-cream">{STEPS[step].name}</h2>
+          </div>
+          <button onClick={onExit} className="btn-press rounded-lg border border-line px-3 py-1.5 font-mono text-[11px] text-dust hover:border-line2 hover:text-cream">
+            exit wizard
           </button>
-        </div>
-        <div className="mt-3 flex gap-1">
-          {STEPS.map((s, i) => (
-            <button
-              key={s.id}
-              onClick={() => i <= step && setStep(i)}
-              title={s.title}
-              className={`h-2 flex-1 rounded-full transition-all duration-500 ${
-                i < step ? "bg-moss" : i === step ? "bg-ember pulse-dot" : "bg-line"
-              } ${i <= step ? "cursor-pointer" : "cursor-default"}`}
-            />
-          ))}
-        </div>
-        <p className="mt-2 font-mono text-[10px] tracking-widest text-dust uppercase">
-          step {step + 1} of {STEPS.length} · {stepDef.title}
-        </p>
-      </div>
+        </header>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-        {/* the one decision */}
-        <section key={step} className="rise-in">
-          <h2 className="font-display text-3xl text-cream">{stepDef.title}</h2>
-          <p className="mt-2 max-w-xl text-[14px] leading-relaxed text-parch">{stepDef.plain}</p>
-
-          <div className="mt-6">
-            {stepDef.id === "start" && (
-              <div className="space-y-3">
-                <BorderGlow radius={14} glow="rgba(242,163,60,0.55)" idle="#3e2f21" innerClassName="bg-[#241b14]" className="cursor-pointer" >
-                  <button onClick={() => setStep(1)} className="btn-press flex w-full items-center gap-4 p-5 text-left">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-ember/40 bg-ember/10 text-ember">
-                      <IWand size={20} />
-                    </span>
-                    <span>
-                      <span className="block font-display text-[17px] tracking-wide text-cream">Start a fresh batch</span>
-                      <span className="mt-0.5 block text-[12.5px] text-parch">answer six quick questions, get a whole batch of picture ideas</span>
-                    </span>
-                  </button>
-                </BorderGlow>
-                {setups.length > 0 && (
-                  <>
-                    <p className="pt-2 font-mono text-[10px] tracking-[0.22em] text-dust uppercase">or start from a saved recipe</p>
-                    <div className="grid gap-2.5 sm:grid-cols-2">
-                      {setups.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => {
-                            setSetup({ ...t.data });
-                            pushToast("info", `Recipe “${t.name}” loaded — you can still change anything.`);
-                            setStep(1);
-                          }}
-                          className="btn-press rounded-xl border border-line bg-panel/60 p-4 text-left transition hover:border-ember/50"
-                        >
-                          <span className="block font-display text-[14px] tracking-wide text-cream">{t.name}</span>
-                          <span className="mt-1 block font-mono text-[10.5px] text-dust">
-                            {t.data.styleId} · {t.data.model || "default painter"} · saved {new Date(t.createdAt).toLocaleDateString("en-GB")}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {stepDef.id === "name" && (
+        <div className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
+          {/* 0 · name */}
+          {step === 0 && (
+            <div className="rise-in max-w-xl">
+              <p className="text-[15px] leading-relaxed text-parch">
+                Give this batch a name so you can find it later. Think of it like labeling a box of pictures before you fill it.
+              </p>
               <input
                 autoFocus
                 value={setup.name}
                 onChange={(e) => patch({ name: e.target.value })}
-                placeholder="e.g. Summer market drop"
-                className="w-full max-w-lg rounded-xl border border-line bg-[#191310] px-4 py-3.5 font-display text-xl tracking-wide text-cream placeholder:font-body placeholder:text-[14px] placeholder:text-dust/60"
+                placeholder="e.g. Spring shop fronts"
+                className={field + " mt-4 !text-[15px]"}
               />
-            )}
+              <Explain>
+                <span className="text-ember">Example:</span> “Harbour district”, “Potion icons round two”, “Posters for the winter fair”.
+                The name only helps <em>you</em> — it never appears inside the pictures.
+              </Explain>
+            </div>
+          )}
 
-            {stepDef.id === "style" && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {allStyles.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => patch({ styleId: s.id })}
-                    className={`btn-press rounded-xl border p-4 text-left transition ${
-                      setup.styleId === s.id ? "border-ember/60 bg-ember/8" : "border-line bg-panel/50 hover:border-line2"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className="flex overflow-hidden rounded-md border border-line">
-                        {s.swatch.map((c) => (
-                          <span key={c} className="h-5 w-5" style={{ background: c }} />
-                        ))}
-                      </span>
-                      <span className="font-display text-[14px] tracking-wide text-cream">{s.name}</span>
-                      {setup.styleId === s.id && <ICheck size={14} className="ml-auto text-ember" />}
-                    </span>
-                    <span className="mt-2 block font-mono text-[10.5px] leading-relaxed text-dust">{s.block}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {stepDef.id === "model" && (
-              <div className="space-y-5">
-                {MODEL_GROUPS.map((g) => (
-                  <div key={g.label}>
-                    <p className="mb-2 font-mono text-[10px] tracking-[0.22em] text-dust uppercase">{g.label}</p>
-                    <div className="grid gap-2.5 sm:grid-cols-2">
-                      {g.ids.map((id) => {
-                        const def = MODELS.find((m) => m.id === id);
-                        const ready = modelReady(id);
-                        const selected = setup.model === id;
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => patch({ model: id })}
-                            className={`btn-press rounded-xl border p-3.5 text-left transition ${
-                              selected ? "border-ember/60 bg-ember/8" : ready ? "border-line bg-panel/50 hover:border-line2" : "border-line bg-panel/30 opacity-70"
-                            }`}
-                          >
-                            <span className="flex items-center justify-between">
-                              <span className="font-mono text-[13px] text-cream">{id}</span>
-                              {selected && <ICheck size={13} className="text-ember" />}
-                            </span>
-                            <span className="mt-1 block text-[11px] text-dust">{def?.free ?? "offline rehearsal"}</span>
-                            {!ready && <span className="mt-1 block font-mono text-[10px] text-ember">needs a key — add it below after choosing</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                {keyPool && (
-                  <div className="rise-in max-w-xl rounded-xl border border-ember/40 bg-ember/6 p-4">
-                    <p className="font-display text-[14px] tracking-wide text-cream">
-                      Add your {keyPool === "geminiKeys" ? "Gemini" : "endpoint"} key (URL and model are already set — one box to fill)
-                    </p>
-                    <p className="mt-1 text-[12px] leading-relaxed text-parch">
-                      {keyPool === "geminiKeys" ? (
-                        <>Free at <span className="font-mono text-ember">aistudio.google.com/apikey</span>. Add as many keys as you like — each brings its own daily allowance and the forge rotates between them automatically.</>
-                      ) : (
-                        <>Any key for your <span className="font-mono text-ember">{settings.openaiBase}</span> endpoint.</>
-                      )}
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                      <input
-                        value={keyDraft}
-                        onChange={(e) => setKeyDraft(e.target.value)}
-                        type="password"
-                        placeholder={keyPool === "geminiKeys" ? "AIza…" : "sk-…"}
-                        className="min-w-0 flex-1 rounded-lg border border-line bg-[#191310] px-3 py-2 font-mono text-[12.5px] text-cream"
-                      />
-                      <Btn variant="primary" onClick={saveKey} disabled={!keyDraft.trim()}>
-                        <ICheck size={12} /> Save key
-                      </Btn>
-                    </div>
-                    <p className="mt-2 font-mono text-[10px] text-dust">keys never leave this browser except to call the image engine</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {stepDef.id === "sizes" && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {([
-                  ["per-category", "Match each picture", "shops & events wide, items square, portraits 4:3 — the forge decides per picture"],
-                  ["16:9", "All wide", "like a shop front or a street scene"],
-                  ["1:1", "All square", "like item icons or portraits"],
-                  ["4:3", "All 4:3", "a classic photograph shape"],
-                ] as const).map(([val, title, sub]) => (
-                  <button
-                    key={val}
-                    onClick={() => patch({ aspect: val })}
-                    className={`btn-press rounded-xl border p-4 text-left transition ${
-                      setup.aspect === val ? "border-ember/60 bg-ember/8" : "border-line bg-panel/50 hover:border-line2"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      {val === "per-category" ? (
-                        <span className="flex gap-1">
-                          <span className="h-4 w-7 rounded-sm border border-ember/60 bg-ember/15" />
-                          <span className="h-4 w-4 rounded-sm border border-ember/60 bg-ember/15" />
+          {/* 1 · world / kind */}
+          {step === 1 && (
+            <div className="rise-in">
+              <p className="max-w-xl text-[15px] leading-relaxed text-parch">
+                What world do these pictures live in? This one choice flavors every prompt, fills in the negative
+                prompts for you, and adds a little tag to the filenames so you always know what's what.
+              </p>
+              <div className="mt-5 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {KINDS.map((k) => {
+                  const active = setup.kind === k.id;
+                  return (
+                    <BorderGlow key={k.id} radius={13} glow={active ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.35)"} idle={active ? "rgba(177,140,224,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#241b26]" : "bg-[#241b14]"}>
+                      <button onClick={() => patch({ kind: k.id })} className="btn-press w-full p-4 text-left">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className={`font-display text-[15px] tracking-wide ${active ? "text-potion" : "text-cream"}`}>{k.label}</span>
+                          {active && <ICheck size={14} className="text-potion" />}
                         </span>
-                      ) : (
-                        <span
-                          className="rounded-sm border border-ember/60 bg-ember/15"
-                          style={{ width: val === "16:9" ? 30 : val === "1:1" ? 17 : 24, height: val === "16:9" ? 17 : val === "1:1" ? 17 : 18 }}
-                        />
-                      )}
-                      <span>
-                        <span className="block font-display text-[14px] tracking-wide text-cream">{title}</span>
-                        <span className="block text-[11.5px] text-dust">{sub}</span>
-                      </span>
-                      {setup.aspect === val && <ICheck size={14} className="ml-auto text-ember" />}
+                        <span className="mt-1 block text-[11.5px] leading-snug text-parch">{k.blurb}</span>
+                        <span className="mt-2 block font-mono text-[9.5px] text-dust">
+                          {k.tag ? (
+                            <>filename tag <span className="text-potion">{k.tag}_</span> · e.g. item_{k.tag}_flask.png</>
+                          ) : (
+                            "no tag — filenames stay plain: item_flask.png"
+                          )}
+                        </span>
+                      </button>
+                    </BorderGlow>
+                  );
+                })}
+              </div>
+              <Explain>
+                <span className="text-potion">Plain English:</span> picking “Cyberpunk” means every prompt quietly gets
+                “neon glow, rain-slick streets…”, every negative prompt gets “medieval, rustic wood…”, and files get
+                names like <span className="font-mono text-cream">shop_cyber_noodle_bar.png</span>. Pick{" "}
+                <span className="text-cream">Generic · none</span> if your pictures don't belong to any world at all.
+              </Explain>
+            </div>
+          )}
+
+          {/* 2 · pictures */}
+          {step === 2 && (
+            <div className="rise-in">
+              <p className="mb-4 max-w-xl text-[15px] leading-relaxed text-parch">
+                Now the fun part — list every picture you want. The AI can write the list for you, or paste/upload your own.
+              </p>
+              <PromptFactory settings={settings} styleId={setup.styleId} styleBlock={null} items={items} setItems={setItems} pushToast={pushToast} />
+            </div>
+          )}
+
+          {/* 3 · style */}
+          {step === 3 && (
+            <div className="rise-in">
+              <p className="max-w-xl text-[15px] leading-relaxed text-parch">
+                Choose one visual style for the whole batch. When every picture shares a style, the set feels like it
+                belongs together — like cards from the same game box.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {allStyles.map((s) => {
+                  const active = setup.styleId === s.id;
+                  return (
+                    <BorderGlow key={s.id} radius={13} glow={active ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.35)"} idle={active ? "rgba(242,163,60,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#2a1e12]" : "bg-[#241b14]"}>
+                      <button onClick={() => patch({ styleId: s.id })} className="btn-press w-full p-4 text-left">
+                        <span className="flex items-center gap-3">
+                          <span className="flex shrink-0 overflow-hidden rounded-md border border-line">
+                            {s.swatch.map((c) => (
+                              <span key={c} className="h-6 w-6" style={{ background: c }} />
+                            ))}
+                          </span>
+                          <span className="flex-1">
+                            <span className={`font-display text-[15px] tracking-wide ${active ? "text-ember" : "text-cream"}`}>{s.name}</span>
+                            <span className="mt-0.5 block font-mono text-[10px] text-dust">{s.block}</span>
+                          </span>
+                          {active && <ICheck size={16} className="shrink-0 text-ember" />}
+                        </span>
+                      </button>
+                    </BorderGlow>
+                  );
+                })}
+              </div>
+              <Explain>
+                <span className="text-ember">Plain English:</span> “Claymation” makes everything look like a charming
+                clay cartoon. “Shadow Puppet” makes everything dramatic silhouettes. You can invent more in{" "}
+                <span className="text-cream">Library → Visual styles</span>.
+              </Explain>
+            </div>
+          )}
+
+          {/* 4 · painter */}
+          {step === 4 && (
+            <div className="rise-in max-w-2xl">
+              <p className="text-[15px] leading-relaxed text-parch">
+                Who should draw these pictures? You only need to set this up once — the forge remembers your keys.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {/* simulated */}
+                <BorderGlow radius={13} glow={setup.model === "" && settings.provider === "simulated" ? "rgba(151,135,109,0.55)" : "rgba(151,135,109,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                  <button onClick={() => patch({ model: "" })} className="btn-press w-full p-4 text-left">
+                    <span className="flex items-center justify-between">
+                      <span className="font-display text-[15px] text-cream">The practice forge</span>
+                      <span className="rounded-md border border-moss/40 bg-moss/10 px-2 py-0.5 font-mono text-[9.5px] tracking-widest text-moss uppercase">free · no key</span>
                     </span>
+                    <span className="mt-1.5 block text-[12px] text-parch">Makes instant placeholder art right on your computer. Perfect for testing the flow before spending anything.</span>
                   </button>
-                ))}
-              </div>
-            )}
-
-            {stepDef.id === "ideas" && (
-              <PromptFactory
-                settings={settings}
-                styleId={setup.styleId}
-                styleBlock={styleDef.block}
-                compact
-                items={items}
-                setItems={setItems}
-                pushToast={pushToast}
-              />
-            )}
-
-            {stepDef.id === "avoid" && (
-              <div className="max-w-xl space-y-3">
-                <textarea
-                  value={setup.defaultNegative}
-                  onChange={(e) => patch({ defaultNegative: e.target.value })}
-                  rows={3}
-                  placeholder="text, watermark, logo, extra fingers, modern objects, blurry…"
-                  className="w-full rounded-xl border border-line bg-[#191310] px-4 py-3 text-[13.5px] text-cream placeholder:text-dust/60"
-                />
-                <p className="text-[12px] leading-relaxed text-dust">
-                  Leave empty if nothing bothers you. Individual pictures can override this later in their row drawer.
-                </p>
-              </div>
-            )}
-
-            {stepDef.id === "output" && (
-              <div className="max-w-xl space-y-4">
-                <div className={`rounded-xl border p-4 ${folder.linked ? "border-moss/50 bg-moss/8" : "border-line bg-panel/50"}`}>
-                  <div className="flex items-center gap-3">
-                    <IFolder size={18} className={folder.linked ? "text-moss" : "text-dust"} />
-                    <div className="flex-1">
-                      <p className="font-display text-[14px] tracking-wide text-cream">
-                        {folder.linked ? `Saving into “${folder.name}”` : "No folder linked yet"}
-                      </p>
-                      <p className="text-[12px] text-parch">
-                        {folder.linked
-                          ? "finished pictures appear in shops/ items/ events/ npcs/ automatically — your pre-made folders are used as-is"
-                          : "pick any folder; the forge creates shops/ items/ events/ npcs/ inside it (needs Chrome or Edge)"}
-                      </p>
-                    </div>
-                    {fsSupported() && (
-                      <Btn onClick={onLinkFolder}>{folder.linked ? "Change" : "Pick folder…"}</Btn>
+                </BorderGlow>
+                {/* pollinations */}
+                <BorderGlow radius={13} glow={setup.model === "flux" || setup.model === "turbo" ? "rgba(86,184,165,0.55)" : "rgba(86,184,165,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                  <div className="p-4">
+                    <span className="flex items-center justify-between">
+                      <span className="font-display text-[15px] text-cream">Free art (FLUX)</span>
+                      <span className="rounded-md border border-moss/40 bg-moss/10 px-2 py-0.5 font-mono text-[9.5px] tracking-widest text-moss uppercase">free · no key</span>
+                    </span>
+                    <span className="mt-1.5 block text-[12px] text-parch">Real AI pictures over the internet, free, unlimited-ish. A bit slow (5–40 seconds each) but costs nothing.</span>
+                    <span className="mt-3 flex gap-1.5">
+                      {["flux", "turbo"].map((m) => (
+                        <button key={m} onClick={() => patch({ model: m })} className={`btn-press rounded-lg border px-2.5 py-1.5 font-mono text-[11px] ${setup.model === m ? "border-lagoon/60 bg-lagoon/12 text-lagoon" : "border-line text-parch hover:border-line2"}`}>
+                          {m} {setup.model === m && "✓"}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                </BorderGlow>
+                {/* google */}
+                <BorderGlow radius={13} glow={chosenModel?.engine === "imagen" ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                  <div className="p-4">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-display text-[15px] text-cream">Google Imagen</span>
+                      <span className="rounded-md border border-ember/40 bg-ember/10 px-2 py-0.5 font-mono text-[9.5px] tracking-widest text-ember uppercase">free key · ~25/day</span>
+                    </span>
+                    {geminiReady ? (
+                      <>
+                        <span className="mt-1.5 block text-[12px] text-moss">✓ a key is already saved in Settings</span>
+                        <span className="mt-3 flex flex-wrap gap-1.5">
+                          {MODELS.filter((m) => m.engine === "imagen").map((m) => (
+                            <button key={m.id} onClick={() => patch({ model: m.id })} className={`btn-press rounded-lg border px-2.5 py-1.5 font-mono text-[11px] ${setup.model === m.id ? "border-ember/60 bg-ember/12 text-ember" : "border-line text-parch hover:border-line2"}`}>
+                              {m.id} {setup.model === m.id && "✓"}
+                            </button>
+                          ))}
+                        </span>
+                      </>
+                    ) : (
+                      <div className="mt-2.5 space-y-2">
+                        <input value={geminiUrl} onChange={(e) => setGeminiUrl(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"} placeholder="endpoint url" />
+                        <input value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} type="password" className={field + " !py-2 font-mono !text-[11px]"} placeholder="API key (free at aistudio.google.com)" />
+                        <select value={geminiModel} onChange={(e) => setGeminiModel(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"}>
+                          {MODELS.filter((m) => m.engine === "imagen").map((m) => (
+                            <option key={m.id} value={m.id}>{m.id} · {m.free}</option>
+                          ))}
+                        </select>
+                        <Btn variant="primary" disabled={!geminiKey.trim()} onClick={applyGemini}>
+                          Save &amp; pick this painter
+                        </Btn>
+                      </div>
                     )}
                   </div>
-                  {folder.error && <p className="mt-2 text-[11.5px] text-blood">{folder.error}</p>}
-                </div>
-                <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-parch">
-                  <input type="checkbox" checked={setup.linkFolder} onChange={(e) => patch({ linkFolder: e.target.checked })} className="accent-[#f2a33c]" />
-                  Ask me to link a folder if none is linked when I finish
-                </label>
-                <p className="text-[12px] leading-relaxed text-dust">
-                  No folder? No problem — you can always download everything as a ZIP from the top bar later.
-                </p>
+                </BorderGlow>
+                {/* openai compatible */}
+                <BorderGlow radius={13} glow={chosenModel?.engine === "openai" ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                  <div className="p-4">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-display text-[15px] text-cream">Any OpenAI-style service</span>
+                      <span className="rounded-md border border-potion/40 bg-potion/10 px-2 py-0.5 font-mono text-[9.5px] tracking-widest text-potion uppercase">your key</span>
+                    </span>
+                    {openaiReady ? (
+                      <>
+                        <span className="mt-1.5 block text-[12px] text-moss">✓ endpoint + key already saved in Settings</span>
+                        <input value={setup.model} onChange={(e) => patch({ model: e.target.value })} list="wiz-models" placeholder={`model — currently “${settings.openaiModel}”`} className={field + " mt-3 !py-2 font-mono !text-[11px]"} />
+                        <datalist id="wiz-models">
+                          {modelOptions.map((m) => (
+                            <option key={m} value={m} />
+                          ))}
+                        </datalist>
+                      </>
+                    ) : (
+                      <div className="mt-2.5 space-y-2">
+                        <input value={oaiUrl} onChange={(e) => setOaiUrl(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"} placeholder="base url — https://api.openai.com/v1" />
+                        <input value={oaiKey} onChange={(e) => setOaiKey(e.target.value)} type="password" className={field + " !py-2 font-mono !text-[11px]"} placeholder="API key" />
+                        <input value={oaiModel} onChange={(e) => setOaiModel(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"} placeholder="model — gpt-image-1, dall-e-3…" />
+                        <Btn variant="primary" disabled={!oaiKey.trim()} onClick={applyOpenai}>
+                          Save &amp; pick this painter
+                        </Btn>
+                      </div>
+                    )}
+                  </div>
+                </BorderGlow>
               </div>
-            )}
+              <Explain>
+                <span className="text-ember">Plain English:</span> the “practice forge” costs nothing and runs on your
+                own machine. FLUX is real AI art that's also free. Google and OpenAI-style services need a key, but
+                Google's is free to get. If you add several Google keys, the forge automatically switches to the next
+                one when a key runs out for the day.
+              </Explain>
+            </div>
+          )}
 
-            {stepDef.id === "go" && (
-              <div className="max-w-xl space-y-4">
-                <div className="rounded-xl border border-line bg-panel/50 p-4">
-                  <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">your batch, in one breath</p>
-                  <p className="mt-2 text-[14px] leading-relaxed text-parch">
-                    <span className="font-semibold text-cream">{items.filter((i) => i.filename.trim()).length} pictures</span> for{" "}
-                    <span className="font-semibold text-cream">“{setup.name}”</span>, painted in{" "}
-                    <span className="font-semibold text-ember">{styleDef.name}</span> by{" "}
-                    <span className="font-mono text-potion">{setup.model}</span>,{" "}
-                    {setup.aspect === "per-category" ? "each shape matched to its kind" : `all ${setup.aspect}`}.
-                    {folder.linked ? ` Files land in “${folder.name}”.` : " You'll download files as a ZIP."}
+          {/* 5 · shape */}
+          {step === 5 && (
+            <div className="rise-in max-w-2xl">
+              <p className="text-[15px] leading-relaxed text-parch">
+                What shape should the pictures be? One shape for everything looks tidy; “match the picture” picks a
+                sensible shape per kind of picture.
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {(["per-category", ...ASPECT_KEYS] as const).map((a) => {
+                  const active = setup.aspect === a;
+                  const dims = a === "per-category" ? null : ASPECTS[a as AspectKey];
+                  return (
+                    <BorderGlow key={a} radius={13} glow={active ? "rgba(86,184,165,0.6)" : "rgba(86,184,165,0.3)"} idle={active ? "rgba(86,184,165,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#1d2422]" : "bg-[#241b14]"}>
+                      <button onClick={() => patch({ aspect: a })} className="btn-press flex w-full flex-col items-center p-4">
+                        <span
+                          className={`rounded-md border-2 ${active ? "border-lagoon" : "border-line2"}`}
+                          style={
+                            dims
+                              ? { width: dims.w >= dims.h ? 64 : (64 * dims.w) / dims.h, height: dims.h >= dims.w ? 44 : (44 * dims.h) / dims.w }
+                              : { width: 56, height: 40, borderStyle: "dashed" }
+                          }
+                        />
+                        <span className={`mt-2.5 font-mono text-[12px] ${active ? "text-lagoon" : "text-parch"}`}>
+                          {a === "per-category" ? "match the picture" : a}
+                        </span>
+                        <span className="mt-0.5 text-center text-[10.5px] text-dust">
+                          {a === "per-category" ? "shops & events wide · items square · people 4:3" : dims ? `${dims.w} × ${dims.h}px` : ""}
+                        </span>
+                      </button>
+                    </BorderGlow>
+                  );
+                })}
+              </div>
+              <Explain>
+                <span className="text-lagoon">Plain English:</span> wide pictures are great for shop fronts and scenes,
+                squares are perfect for item icons, tall ones suit phone screens. “Match the picture” does this thinking for you.
+              </Explain>
+            </div>
+          )}
+
+          {/* 6 · home */}
+          {step === 6 && (
+            <div className="rise-in max-w-xl">
+              <p className="text-[15px] leading-relaxed text-parch">
+                Where should the finished picture files go? The forge sorts them into folders by what they are:{" "}
+                <span className="font-mono text-cream">shops/ items/ events/ npcs/</span>.
+              </p>
+              <div className="mt-5">
+                <BorderGlow radius={13} glow={setup.linkFolder ? "rgba(140,181,111,0.55)" : "rgba(140,181,111,0.3)"} idle={setup.linkFolder ? "rgba(140,181,111,0.45)" : "#3e2f21"} innerClassName={setup.linkFolder ? "bg-[#1f241b]" : "bg-[#241b14]"}>
+                  <button onClick={() => patch({ linkFolder: !setup.linkFolder })} className="btn-press w-full p-4 text-left">
+                    <span className="flex items-center gap-3">
+                      <IFolder size={20} className={setup.linkFolder ? "text-moss" : "text-dust"} />
+                      <span className="flex-1">
+                        <span className={`font-display text-[15px] ${setup.linkFolder ? "text-moss" : "text-cream"}`}>
+                          Save into a folder on this computer
+                        </span>
+                        <span className="mt-0.5 block text-[12px] text-parch">
+                          {folder.linked ? `Currently linked: ${folder.name}` : "You'll pick the folder on the next step — folders are created for you if missing."}
+                        </span>
+                      </span>
+                      <span className={`flex h-6 w-11 items-center rounded-full border p-0.5 transition ${setup.linkFolder ? "justify-end border-moss/60 bg-moss/20" : "justify-start border-line2"}`}>
+                        <span className={`h-5 w-5 rounded-full ${setup.linkFolder ? "bg-moss" : "bg-dust"}`} />
+                      </span>
+                    </span>
+                  </button>
+                </BorderGlow>
+                {!fsSupported() && (
+                  <p className="mt-3 flex items-start gap-2 rounded-lg border border-ember/35 bg-ember/6 px-3.5 py-2.5 text-[12.5px] text-parch">
+                    <IAlert size={14} className="mt-0.5 shrink-0 text-ember" />
+                    This browser can't link folders (needs Chrome or Edge). No problem — you can still download everything as one ZIP from the top bar.
                   </p>
-                </div>
-                <div>
-                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
-                    save this setup as a recipe? (optional)
-                  </label>
-                  <input
-                    value={recipeName}
-                    onChange={(e) => setRecipeName(e.target.value)}
-                    placeholder="e.g. Marketplace standard"
-                    className="w-full rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60"
-                  />
-                  <p className="mt-1.5 text-[11.5px] text-dust">next batch, the wizard offers it as a starting point on step one.</p>
-                </div>
-                <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-parch">
-                  <input type="checkbox" checked={setup.runAfter} onChange={(e) => patch({ runAfter: e.target.checked })} className="accent-[#f2a33c]" />
-                  start painting as soon as I finish (you can still halt at any time)
-                </label>
+                )}
               </div>
-            )}
-          </div>
+              <Explain>
+                <span className="text-moss">Plain English:</span> every time a picture finishes, the forge quietly
+                writes the file into your folder, already sorted. Turn this off if you'd rather download a ZIP at the end.
+              </Explain>
+            </div>
+          )}
 
-          {/* nav */}
-          <div className="mt-8 flex items-center gap-3">
-            {step > 0 && (
-              <Btn onClick={() => setStep(step - 1)}>
-                <IChevron size={13} className="rotate-90" /> Back
-              </Btn>
-            )}
-            {step < STEPS.length - 1 ? (
-              <Btn variant="primary" disabled={!canNext()} onClick={() => setStep(step + 1)}>
-                Next · {STEPS[step + 1].title}
-              </Btn>
-            ) : (
-              <Btn variant="primary" onClick={finish}>
-                <IPlay size={13} /> Arrange {items.filter((i) => i.filename.trim()).length} pictures
-              </Btn>
-            )}
-            {!canNext() && step > 0 && (
-              <span className="font-mono text-[10.5px] text-dust">
-                {STEPS[step].id === "name" ? "a name, even a silly one" : STEPS[step].id === "model" ? "pick a painter" : "add at least one picture idea"}
-              </span>
-            )}
-          </div>
-        </section>
-
-        {/* summary rail */}
-        <aside className="hidden lg:block">
-          <div className="sticky top-4 space-y-3 rounded-2xl border border-line bg-panel/60 p-4">
-            <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">so far…</p>
-            {[
-              ["name", setup.name || "—"],
-              ["look", styleDef.name],
-              ["painter", setup.model || "—"],
-              ["shape", setup.aspect === "per-category" ? "matched per picture" : setup.aspect],
-              ["pictures", `${items.filter((i) => i.filename.trim()).length} ideas`],
-              ["avoid", setup.defaultNegative.trim() ? setup.defaultNegative.trim().slice(0, 40) + "…" : "nothing"],
-              ["folder", folder.linked ? folder.name : setup.linkFolder ? "will ask" : "ZIP later"],
-            ].map(([k, v]) => (
-              <div key={k} className="flex items-baseline justify-between gap-3 border-b border-line/50 pb-2 text-[12px] last:border-0">
-                <span className="font-mono text-[10px] tracking-widest text-dust uppercase">{k}</span>
-                <span className="truncate text-right text-parch">{v}</span>
+          {/* 7 · extras */}
+          {step === 7 && (
+            <div className="rise-in max-w-xl space-y-4">
+              <p className="text-[15px] leading-relaxed text-parch">Two small choices. You can skip both.</p>
+              <div className={card}>
+                <button onClick={() => setWantSave(!wantSave)} className="btn-press flex w-full items-center gap-3 text-left">
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${wantSave ? "border-ember bg-ember text-[#241503]" : "border-line2"}`}>
+                    {wantSave && <ICheck size={11} />}
+                  </span>
+                  <span className="flex-1">
+                    <span className="font-semibold text-cream">Save this setup as a recipe</span>
+                    <span className="block text-[11.5px] text-dust">next batch you can start from these exact choices in one click</span>
+                  </span>
+                </button>
+                {wantSave && (
+                  <input autoFocus value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="recipe name — e.g. Shop fronts, clay look" className={field + " mt-3"} />
+                )}
               </div>
-            ))}
-            <p className="flex items-start gap-2 pt-1 text-[11px] leading-relaxed text-dust">
-              <ISparkle size={12} className="mt-0.5 shrink-0 text-ember" />
-              One choice per step. Nothing here is permanent — every answer can be changed later, per batch and even per picture.
-            </p>
-          </div>
-        </aside>
+              <div className={card}>
+                <button onClick={() => patch({ runAfter: !setup.runAfter })} className="btn-press flex w-full items-center gap-3 text-left">
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${setup.runAfter ? "border-ember bg-ember text-[#241503]" : "border-line2"}`}>
+                    {setup.runAfter && <ICheck size={11} />}
+                  </span>
+                  <span className="flex-1">
+                    <span className="font-semibold text-cream">Start drawing right away</span>
+                    <span className="block text-[11.5px] text-dust">otherwise you can review everything on the workbench first</span>
+                  </span>
+                </button>
+              </div>
+              <Explain>
+                <span className="text-ember">Plain English:</span> a recipe is like saving your favorite sandwich order.
+                And “start drawing” means the forge begins the moment you press the big green button — you can always
+                stop it later.
+              </Explain>
+            </div>
+          )}
+
+          {/* 8 · review */}
+          {step === 8 && (
+            <div className="rise-in">
+              <div className="mb-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  { k: "batch", v: setup.name, tone: "text-cream" },
+                  { k: "world", v: kind.id === "none" ? "generic · no flavor" : `${kind.label}${kind.tag ? ` · filenames get “${kind.tag}_”` : ""}`, tone: "text-potion" },
+                  { k: "pictures", v: `${items.filter((i) => i.filename && i.prompt).length} in the list`, tone: "text-cream" },
+                  { k: "look", v: styleDef?.name ?? setup.styleId, tone: "text-ember" },
+                  { k: "painter", v: setup.model ? `${setup.model}` : "practice forge", tone: "text-lagoon" },
+                  { k: "shape", v: setup.aspect === "per-category" ? "match the picture" : setup.aspect, tone: "text-cream" },
+                ].map((s) => (
+                  <div key={s.k} className={card}>
+                    <p className="font-mono text-[9.5px] tracking-[0.22em] text-dust uppercase">{s.k}</p>
+                    <p className={`mt-1 truncate font-display text-[15px] ${s.tone}`}>{s.v}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-2 flex items-center justify-between">
+                <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">
+                  every prompt — open one to read or edit it
+                </p>
+                <div className="flex gap-1.5">
+                  <button onClick={allOpen ? closeAll : openAll} className="btn-press rounded-md border border-line bg-panel/60 px-2.5 py-1 font-mono text-[10px] text-parch hover:border-ember/50 hover:text-ember">
+                    {allOpen ? "close all" : "open all"}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {items
+                  .filter((i) => i.filename && i.prompt)
+                  .map((item, i) => (
+                    <AccordionItem
+                      key={i}
+                      i={i}
+                      item={item}
+                      kindTag={kind.tag}
+                      open={!!openMap[i]}
+                      onToggle={() => setOpenMap((m) => ({ ...m, [i]: !m[i] }))}
+                      onPatch={(p) => {
+                        const real = items.indexOf(item);
+                        setItems(items.map((x, xi) => (xi === real ? { ...x, ...p } : x)));
+                      }}
+                    />
+                  ))}
+              </div>
+              <Explain>
+                <span className="text-moss">Heads-up:</span> the style block{styleDef ? ` (“…${styleDef.block.slice(-40)}”)` : ""}{" "}
+                is added to each prompt automatically when the batch is arranged — that's what keeps the whole set looking like family.
+              </Explain>
+            </div>
+          )}
+        </div>
+
+        {/* footer */}
+        <footer className="mt-2 flex items-center gap-3 border-t border-line pt-4">
+          <Btn onClick={() => (step === 0 ? onExit() : setStep((s) => s - 1))}>{step === 0 ? "Cancel" : "← Back"}</Btn>
+          {step < STEPS.length - 1 ? (
+            <Btn variant="primary" onClick={next} disabled={!canNext()}>
+              {step === 2 ? `Next · ${items.filter((i) => i.filename && i.prompt).length} pictures →` : "Next →"}
+            </Btn>
+          ) : (
+            <Btn
+              variant="moss"
+              onClick={() => {
+                const ready = items.map((i) => ({
+                  ...i,
+                  filename: autoFixFilename(i.filename, i.category ?? "item"),
+                  prompt: i.prompt + (styleDef ? `, ${styleDef.block}` : ""),
+                }));
+                const allNames = ready.map((x) => ({ id: -1, filename: x.filename }));
+                const bad = ready.filter((x) => validateFilename(x.filename, x.category ?? "item", allNames, -1).some((c) => !c.pass));
+                if (bad.length > 0) {
+                  pushToast("err", `${bad.length} filename${bad.length > 1 ? "s" : ""} still break the rules — the forge auto-fixed them for you.`);
+                }
+                onFinish(setup, ready, wantSave ? saveName.trim() : null);
+              }}
+            >
+              <IPlay size={13} /> Arrange {items.filter((i) => i.filename && i.prompt).length} pictures
+            </Btn>
+          )}
+          <span className="ml-auto hidden font-mono text-[10.5px] text-dust sm:block">
+            {STEPS[step].short} <IGear size={0} className="hidden" />
+            <IX size={0} className="hidden" />
+          </span>
+        </footer>
       </div>
     </div>
   );

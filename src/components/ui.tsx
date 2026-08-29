@@ -109,6 +109,16 @@ export const IQuill = (p: IconProps) => (
     <path d="M5 19 15 9" />
   </S>
 );
+export const IThumbUp = (p: IconProps) => (
+  <S {...p}>
+    <path d="M7 10.5V20M7 20H4.5A1.5 1.5 0 0 1 3 18.5v-6.4A1.5 1.5 0 0 1 4.5 10.5H7l4.2-6.6A1.8 1.8 0 0 1 13.2 6v3.5h5.1a2 2 0 0 1 2 2.4l-1.4 6.1a2 2 0 0 1-2 1.5H7" />
+  </S>
+);
+export const IThumbDown = (p: IconProps) => (
+  <S {...p}>
+    <path d="M17 13.5V4M17 4h2.5A1.5 1.5 0 0 1 21 5.5v6.4a1.5 1.5 0 0 1-1.5 1.6H17l-4.2 6.6A1.8 1.8 0 0 1 10.8 18v-3.5H5.7a2 2 0 0 1-2-2.4l1.4-6.1a2 2 0 0 1 2-1.5H17" />
+  </S>
+);
 export const IFolder = (p: IconProps) => (
   <S {...p}>
     <path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7Z" />

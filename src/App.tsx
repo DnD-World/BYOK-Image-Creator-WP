@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Category, LogEntry, ManifestRow, Status, Toast } from "./types";
-import { ASPECTS, STYLES } from "./types";
+import { ASPECTS, STYLES, accentHex } from "./types";
 import { SEED_ROWS } from "./lib/seed";
 import { downloadCsv, parseCsv, rowsFromCsv, rowsToCsv } from "./lib/csv";
 import { renderPreview } from "./lib/preview";
@@ -41,8 +41,8 @@ import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./com
 import WpImportModal from "./components/WpImportModal";
 import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
-import { DotField } from "./components/effects";
-import { IAnvil, IFolder, IPlay, IQuill, ToastHost, IX } from "./components/ui";
+import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
+import { Btn, IAnvil, IFolder, IPlay, IQuill, ToastHost, IX } from "./components/ui";
 import type { FolderState } from "./components/SettingsDrawer";
 
 const LS_KEY = "image-forge-manifest-v1";
@@ -549,6 +549,7 @@ export default function App() {
       const startId = rowsRef.current.reduce((m, r) => Math.max(m, r.id), 0) + 1;
       const newRows = factoryToRows(items, {
         styleId: setup.styleId,
+        kind: setup.kind,
         model: setup.model,
         aspect: setup.aspect,
         defaultNegative: setup.defaultNegative,
@@ -641,25 +642,41 @@ export default function App() {
   const scribeRow = scribeId !== null ? (rows.find((r) => r.id === scribeId) ?? null) : null;
   const activeBatch = batchFilter ? batches.find((b) => b.id === batchFilter) : null;
   const styleBlock = STYLES.find((s) => s.id === styleLock)?.block ?? settings.customStyles.find((s) => s.id === styleLock)?.block ?? "";
+  const accent = accentHex(settings.ambient.accent);
 
   return (
-    <div className="grain relative flex h-screen flex-col overflow-hidden bg-ink">
-      {settings.ambient.dots && (
+    <div
+      className="grain relative flex h-screen flex-col overflow-hidden bg-ink"
+      data-glow={settings.ambient.glow}
+      style={
+        {
+          "--color-ember": accent,
+          "--fg-glow": `${accent}8c`,
+          "--fg-glow-idle": `${accent}29`,
+        } as CSSProperties
+      }
+    >
+      {settings.ambient.background === "dots" && (
         <DotField
           className="absolute inset-0 z-0"
-          dotSpacing={26}
+          dotSpacing={Math.round(46 - settings.ambient.density * 0.24)}
           dotRadius={1.25}
           cursorRadius={300}
           bulgeStrength={34}
           glowRadius={230}
           sparkle={settings.ambient.sparkle}
-          waveAmplitude={2.2}
+          waveAmplitude={settings.ambient.wave ? 2.2 : 0}
           gradientFrom="rgba(205,188,159,0.20)"
-          gradientTo="rgba(242,163,60,0.15)"
-          glowColor="rgba(242,163,60,0.08)"
+          gradientTo={`${accent}26`}
+          glowColor={`${accent}14`}
         />
       )}
-      {settings.ambient.glow && (
+      {settings.ambient.background === "embers" && (
+        <EmberField className="absolute inset-0 z-0" density={settings.ambient.density} color={accent} />
+      )}
+      {settings.ambient.background === "stars" && <StarField className="absolute inset-0 z-0" density={settings.ambient.density + 40} />}
+      <CursorFX mode={settings.ambient.cursor} size={settings.ambient.cursorSize} color={accent} />
+      {settings.ambient.background !== "none" && (
         <>
           <div className="lantern-glow" style={{ top: -140, left: -120, width: 460, height: 460, background: "rgba(242,163,60,0.16)" }} />
           <div className="lantern-glow" style={{ bottom: -180, right: -140, width: 520, height: 520, background: "rgba(177,140,224,0.1)", animationDelay: "-3.4s" }} />
@@ -833,22 +850,42 @@ export default function App() {
               items={factoryItems}
               setItems={setFactoryItems}
               pushToast={pushToast}
-              onAdd={(items) =>
-                startBatch(
-                  {
-                    name: `Factory batch ${new Date().toLocaleDateString("en-GB")}`,
-                    styleId: styleLock,
-                    model: "",
-                    aspect: "per-category",
-                    linkFolder: folder.linked,
-                    runAfter: false,
-                    defaultNegative: "",
-                  },
-                  items,
-                  null
-                )
-              }
             />
+            {factoryItems.filter((i) => i.filename.trim() && i.prompt.trim()).length > 0 && (
+              <div className="sticky bottom-0 border-t border-line bg-coal/90 px-6 py-3 backdrop-blur">
+                <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+                  <p className="font-mono text-[11px] text-dust">
+                    {factoryItems.filter((i) => i.filename.trim() && i.prompt.trim()).length} pictures ready · style “{styleLock}” will be appended
+                  </p>
+                  <Btn
+                    variant="moss"
+                    onClick={() => {
+                      const ready = factoryItems.map((i) => ({
+                        ...i,
+                        prompt: styleBlock && appendStyle && !i.prompt.endsWith(styleBlock) ? `${i.prompt}, ${styleBlock}` : i.prompt,
+                      }));
+                      startBatch(
+                        {
+                          name: `Factory batch ${new Date().toLocaleDateString("en-GB")}`,
+                          kind: "none",
+                          styleId: styleLock,
+                          model: "",
+                          aspect: "per-category",
+                          linkFolder: folder.linked,
+                          runAfter: false,
+                          defaultNegative: "",
+                        },
+                        ready,
+                        null
+                      );
+                      setFactoryItems([]);
+                    }}
+                  >
+                    <IPlay size={13} /> Arrange on the workbench
+                  </Btn>
+                </div>
+              </div>
+            )}
           </main>
         ) : view === "lib-images" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
@@ -856,8 +893,7 @@ export default function App() {
           </main>
         ) : view === "lib-styles" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
-            <StyleLibrary settings={settings} patchSettings={patchSettings} styleLock={styleLock} setStyleLock={setStyleLock} />
-          </main>
+              <StyleLibrary settings={settings} patchSettings={patchSettings} styleLock={styleLock} setStyleLock={setStyleLock} pushToast={pushToast} />          </main>
         ) : view === "lib-templates" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
             <TemplateLibrary

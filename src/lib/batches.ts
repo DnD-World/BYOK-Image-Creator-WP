@@ -1,11 +1,12 @@
 import type { AspectKey, Category, ManifestRow } from "../types";
-import { ASPECTS } from "../types";
+import { ASPECTS, kindById } from "../types";
 import { autoFixFilename } from "./validate";
 
 export const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 export interface BatchSetup {
   name: string;
+  kind: string;
   styleId: string;
   model: string;
   aspect: "per-category" | AspectKey;
@@ -16,6 +17,7 @@ export interface BatchSetup {
 
 export const DEFAULT_SETUP: BatchSetup = {
   name: "",
+  kind: "none",
   styleId: "claymation",
   model: "",
   aspect: "per-category",
@@ -78,9 +80,10 @@ const CAT_ASPECT: Record<Category, AspectKey> = { shop: "16:9", item: "1:1", eve
 
 export function factoryToRows(
   items: FactoryItem[],
-  o: { styleId: string; model: string; aspect: BatchSetup["aspect"]; defaultNegative: string; startId: number }
+  o: { styleId: string; kind: string; model: string; aspect: BatchSetup["aspect"]; defaultNegative: string; startId: number }
 ): ManifestRow[] {
   let next = o.startId;
+  const kind = kindById(o.kind);
   return items
     .filter((i) => i.filename.trim() && i.prompt.trim())
     .map((i) => {
@@ -90,7 +93,8 @@ export function factoryToRows(
         id: next++,
         filename: autoFixFilename(i.filename, category),
         prompt: i.prompt.trim(),
-        negative_prompt: i.negative_prompt?.trim() || o.defaultNegative.trim() || undefined,
+        negative_prompt: i.negative_prompt?.trim() || o.defaultNegative.trim() || kind.negative || undefined,
+        kind: kind.id === "none" ? undefined : kind.id,
         category,
         item_id: "", shop_id: "", event_id: "",
         style: o.styleId,
@@ -105,42 +109,48 @@ export function factoryToRows(
     });
 }
 
-/* ---------------- offline idea generator (fallback when no text engine) ---------------- */
+/* ---------------- offline idea generator (fallback when no text engine) ----------------
+   Subjects stay world-neutral; the KIND supplies the flavor, so the same idea
+   works for D&D, cyberpunk, cozy… anything. */
 
 const POOLS: Record<Category, string[][]> = {
   shop: [
-    ["blacksmith forge", "glowing coals, hanging hammers, anvil in the window"],
-    ["potion shop", "shelves of glowing flasks, crooked chimney, purple light"],
+    ["forge stall", "glowing coals, hanging tools, a well-worn workbench in the window"],
+    ["potion shop", "shelves of glowing flasks, crooked chimney, colored light spilling out"],
     ["tavern", "foaming tankard sign, warm windows, smoke curling from the chimney"],
-    ["baker stall", "stacked bread loaves, flour dust in the lantern light"],
+    ["bakery", "stacked fresh loaves, flour dust hanging in the lantern light"],
     ["scroll merchant", "towers of scrolls, ink pots, a sleeping cat on the counter"],
-    ["armor shop", "polished breastplates, shield wall, oil-lamp shine"],
+    ["armory", "polished plates, a wall of shields, oil-lamp shine on steel"],
   ],
   item: [
-    ["healing potion", "round glass flask, glowing red liquid, cork stopper, tiny bubbles"],
-    ["longsword", "polished steel blade, leather-wrapped grip, on parchment"],
+    ["healing flask", "round glass bottle, glowing red liquid, cork stopper, tiny bubbles"],
+    ["long blade", "polished steel, leather-wrapped grip, resting on plain cloth"],
     ["iron shield", "riveted kite shield, painted sun emblem, worn edges"],
-    ["spellbook", "cracked leather cover, brass clasp, faintly glowing runes"],
-    ["coil of rope", "hempen rope, neatly coiled, merchant's knot on top"],
+    ["spell book", "cracked leather cover, brass clasp, faintly glowing runes"],
+    ["rope coil", "sturdy rope, neatly coiled, merchant's knot on top"],
     ["lantern", "brass lantern, warm flame, moths circling the glass"],
   ],
   event: [
-    ["escaped goat", "goat sprinting through the market, knocked apple crate, children chasing it"],
-    ["bard performance", "bard on a crate, small crowd tossing copper, lute raised high"],
-    ["market fire drill", "bucket brigade passing water, dramatic and comedic, dusk light"],
+    ["escaped goat", "goat sprinting through the crowd, knocked fruit crate, kids chasing it"],
+    ["street performer", "performer on a crate, small crowd tossing coins, instrument raised high"],
+    ["fire drill", "bucket brigade passing water, dramatic and comedic, dusk light"],
     ["royal herald", "herald on a cart reading a proclamation, crowd leaning in"],
-    ["cart wheel mishap", "wagon tipped over, cabbages everywhere, apologetic driver"],
+    ["cart mishap", "wagon tipped over, cabbages everywhere, apologetic driver"],
   ],
   npc: [
-    ["city guard", "tired eyes, dented helmet, halberd over shoulder, lantern rim light"],
+    ["city guard", "tired eyes, dented helm, polearm over shoulder, lantern rim light"],
     ["street merchant", "wide grin, colorful scarves, scales in hand, warm stall light"],
     ["old sage", "long grey beard, twinkling eyes, staff with a crystal, soft study light"],
     ["stable hand", "freckles, straw hat, hay wisps, gentle smile, golden hour"],
-    ["tavern keeper", "apron and rolled sleeves, tankard in hand, warm hearth behind"],
+    ["tavern keeper", "apron and rolled sleeves, mug in hand, warm hearth behind"],
   ],
 };
 
-export function generateIdeas(topic: string, count: number): FactoryItem[] {
+const LIGHTING = ["warm lantern light", "soft golden hour", "moody evening glow", "bright midday sun", "cozy candlelight"];
+const MOOD = ["inviting and lived-in", "a little mysterious", "bustling and cheerful", "quiet and storied", "playfully chaotic"];
+
+export function generateIdeas(topic: string, count: number, kindId = "none"): FactoryItem[] {
+  const kind = kindById(kindId);
   const cats: Category[] = ["shop", "item", "event", "npc"];
   const out: FactoryItem[] = [];
   const t = topic.trim().toLowerCase();
@@ -148,10 +158,17 @@ export function generateIdeas(topic: string, count: number): FactoryItem[] {
     const cat = cats[i % cats.length];
     const pool = POOLS[cat];
     const pick = pool[(i * 7 + t.length) % pool.length];
-    const name = pick[0].replace(/\s+/g, "_");
+    const slug = pick[0].replace(/\s+/g, "_");
+    const tag = kind.tag ? `${kind.tag}_` : "";
+    const subject =
+      cat === "shop" ? `${pick[0]} storefront` : cat === "item" ? `${pick[0]} item icon` : cat === "event" ? `${pick[0]} street scene` : `${pick[0]} portrait`;
+    const prompt =
+      `${t ? t + ", " : ""}${subject}. ${pick[1]}, ${LIGHTING[(i * 3) % LIGHTING.length]}, ${MOOD[(i * 5) % MOOD.length]}.` +
+      (kind.flavor ? ` ${kind.flavor}.` : "");
     out.push({
-      filename: `${cat}_${name}.png`,
-      prompt: `${t ? t + ", " : ""}${cat === "shop" ? pick[0] + " storefront" : cat === "item" ? pick[0] + " item icon" : cat === "event" ? pick[0] + " street scene" : pick[0] + " portrait"}, ${pick[1]}`,
+      filename: `${cat}_${tag}${slug}.png`,
+      prompt,
+      negative_prompt: kind.negative,
       category: cat,
     });
   }

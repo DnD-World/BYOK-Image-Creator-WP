@@ -18,6 +18,8 @@ export interface ManifestRow {
   prompt: string;
   negative_prompt?: string;
   note?: string;
+  kind?: string;
+  rating?: "like" | "dislike";
   category: Category;
   item_id: string;
   shop_id: string;
@@ -75,6 +77,8 @@ export const ASPECTS: Record<AspectKey, { w: number; h: number; vbW: number; vbH
 
 export const ASPECT_KEYS = Object.keys(ASPECTS) as AspectKey[];
 
+/* ---------------- visual styles (the MEDIUM — no subject baked in) ---------------- */
+
 export interface StyleDef {
   id: string;
   name: string;
@@ -86,34 +90,159 @@ export const STYLES: StyleDef[] = [
   {
     id: "claymation",
     name: "Claymation",
-    block: "claymation style, medieval fantasy, soft lighting, charming tabletop RPG illustration, clean composition",
+    block: "claymation style, soft warm lighting, charming handmade illustration, clean composition",
     swatch: ["#e8b06a", "#a5552f", "#7d9c5c"],
   },
   {
     id: "stop-motion-clay",
     name: "Stop-Motion Clay",
-    block: "stop motion clay style, visible fingerprints, medieval fantasy, warm practical lighting, charming tabletop RPG illustration, clean composition",
+    block: "stop motion clay style, visible fingerprints, warm practical lighting, charming handmade illustration, clean composition",
     swatch: ["#d99a5b", "#8f4a2c", "#5f7d4e"],
   },
   {
     id: "paper-cutout",
     name: "Paper Cutout",
-    block: "paper cutout style, layered cardstock textures, medieval fantasy, soft side lighting, charming tabletop RPG illustration, clean composition",
+    block: "paper cutout style, layered cardstock textures, soft side lighting, charming illustration, clean composition",
     swatch: ["#e5c98f", "#b06a3a", "#88a06b"],
   },
   {
     id: "shadow-puppet",
     name: "Shadow Puppet",
-    block: "shadow puppet style, medieval fantasy silhouette, warm lantern light, charming tabletop RPG illustration, clean composition",
+    block: "shadow puppet style, dramatic silhouette, warm lantern light, charming illustration, clean composition",
     swatch: ["#f0b45a", "#3a2a1c", "#1d1410"],
   },
   {
     id: "low-poly",
     name: "Low-Poly Stylized",
-    block: "low-poly stylized fantasy, flat shaded facets, medieval marketplace, soft rim lighting, charming tabletop RPG illustration, clean composition",
+    block: "low-poly stylized, flat shaded facets, soft rim lighting, charming illustration, clean composition",
     swatch: ["#d8a35e", "#9c5a34", "#6f9464"],
   },
 ];
+
+/* ---------------- kinds (the SUBJECT WORLD — optional, "none" = generic) ---------------- */
+
+export interface KindDef {
+  id: string;
+  label: string;
+  /** subject flavor appended to every prompt; empty for generic */
+  flavor: string;
+  /** automatic negative prompt baseline */
+  negative: string;
+  /** short tag woven into generated filenames; empty for generic */
+  tag: string;
+  blurb: string;
+}
+
+export const KINDS: KindDef[] = [
+  {
+    id: "none",
+    label: "Generic · none",
+    flavor: "",
+    negative: "text, watermark, logo, blurry, deformed, low quality",
+    tag: "",
+    blurb: "No world flavor at all — just your description and the visual style.",
+  },
+  {
+    id: "dnd",
+    label: "D&D fantasy",
+    flavor: "medieval fantasy, D&D marketplace, tabletop RPG charm",
+    negative: "modern technology, neon signs, text, watermark, photorealistic",
+    tag: "dnd",
+    blurb: "Swords, taverns and tavern-sized problems.",
+  },
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk",
+    flavor: "cyberpunk city, neon glow, rain-slick streets, synthwave palette",
+    negative: "medieval, rustic wood, bright daylight, text, watermark",
+    tag: "cyber",
+    blurb: "Chrome, neon and noodle bars at 2 a.m.",
+  },
+  {
+    id: "scifi",
+    label: "Sci-fi",
+    flavor: "far-future science fiction, sleek hulls, starlight, sterile light",
+    negative: "medieval, magic, text, watermark, blurry",
+    tag: "scifi",
+    blurb: "Clean lines, quiet engines, big windows on space.",
+  },
+  {
+    id: "cozy",
+    label: "Cozy cottagecore",
+    flavor: "cozy cottagecore, warm hearth light, storybook softness",
+    negative: "horror, neon, harsh shadows, text, watermark",
+    tag: "cozy",
+    blurb: "Tea, gardens and soft blankets.",
+  },
+  {
+    id: "gothic",
+    label: "Gothic horror",
+    flavor: "dark gothic, candle smoke, Victorian shadows, moody mist",
+    negative: "bright daylight, cartoon, cheerful, text, watermark",
+    tag: "gothic",
+    blurb: "Creaking floors and things in the fog.",
+  },
+  {
+    id: "steampunk",
+    label: "Steampunk",
+    flavor: "steampunk brass and gears, Victorian machinery, steam wisps",
+    negative: "plastic, neon, digital screens, text, watermark",
+    tag: "steam",
+    blurb: "Brass, boilers and very polite robots.",
+  },
+  {
+    id: "pirate",
+    label: "Pirate seas",
+    flavor: "golden-age piracy, salt spray, creaking ships, tropical light",
+    negative: "modern, city, text, watermark, blurry",
+    tag: "pirate",
+    blurb: "Salt, gold and questionable maps.",
+  },
+  {
+    id: "mythic",
+    label: "Mythology",
+    flavor: "ancient mythology, marble and godlight, epic scale",
+    negative: "modern clothing, text, watermark, blurry",
+    tag: "myth",
+    blurb: "Temples, omens and dramatic family trees.",
+  },
+  {
+    id: "western",
+    label: "Old west",
+    flavor: "old west frontier, dusty golden hour, desert light",
+    negative: "neon, medieval, text, watermark",
+    tag: "west",
+    blurb: "Dust, spurs and one very slow clock.",
+  },
+  {
+    id: "modern",
+    label: "Modern life",
+    flavor: "contemporary life, soft natural daylight, candid feel",
+    negative: "fantasy, medieval, text, watermark",
+    tag: "modern",
+    blurb: "Coffee shops, crosswalks and golden afternoons.",
+  },
+  {
+    id: "anime",
+    label: "Anime",
+    flavor: "anime key visual, cel shading, expressive light",
+    negative: "photorealistic, text, watermark, blurry",
+    tag: "anime",
+    blurb: "Big skies, big feelings, perfect hair physics.",
+  },
+];
+
+export const kindById = (id?: string): KindDef => KINDS.find((k) => k.id === id) ?? KINDS[0];
+
+export const ACCENTS: { id: string; name: string; hex: string }[] = [
+  { id: "ember", name: "Lantern Ember", hex: "#f2a33c" },
+  { id: "lagoon", name: "Lagoon", hex: "#56b8a5" },
+  { id: "potion", name: "Potion", hex: "#b18ce0" },
+  { id: "moss", name: "Moss", hex: "#8cb56f" },
+  { id: "blood", name: "Dragonfire", hex: "#e2593f" },
+  { id: "ice", name: "Glacier", hex: "#7db8d8" },
+];
+export const accentHex = (id: string): string => ACCENTS.find((a) => a.id === id)?.hex ?? ACCENTS[0].hex;
 
 export const ERROR_POOL = [
   "429 rate_limited — quota exceeded, retry after cooldown",

@@ -247,8 +247,38 @@ input, textarea, select {
   outline: none;
 }
 input:focus-visible, textarea:focus-visible, select:focus-visible {
-  border-color: rgba(242, 163, 60, 0.65) !important;
-  box-shadow: 0 0 0 3px rgba(242, 163, 60, 0.14);
+  border-color: color-mix(in srgb, var(--color-ember) 65%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ember) 14%, transparent);
+}
+
+/* ---------- central glow modes (Settings → Appearance) ---------- */
+@keyframes hueSpin {
+  to { filter: hue-rotate(360deg); }
+}
+[data-glow="off"] .bglow {
+  opacity: 0 !important;
+}
+[data-glow="prismatic"] .bglow-live {
+  animation: hueSpin 9s linear infinite;
+}
+
+/* ---------- cursor sparkles ---------- */
+.spark {
+  position: fixed;
+  z-index: 66;
+  pointer-events: none;
+  border-radius: 9999px;
+  animation: sparkFly 0.72s ease-out forwards;
+}
+@keyframes sparkFly {
+  from { opacity: 0.95; transform: translate(0, 0) scale(1); }
+  to { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(0.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lantern-glow, .breathe, .pulse-dot, .shimmer, .stripes-live, .dash-flow, .hammer-swing {
+    animation: none !important;
+  }
 }
 
 details summary::-webkit-details-marker {

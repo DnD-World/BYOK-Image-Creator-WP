@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Toast } from "../types";
-import { STYLES } from "../types";
+import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, PROVIDER_META, formatCountdown, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
@@ -454,30 +454,136 @@ export default function SettingsView({
         {section === "appearance" && (
           <>
             <H>Appearance</H>
-            <P>The forge's weather. Turn things off if you like it quieter.</P>
-            <div className="space-y-2.5">
+            <P>The forge's weather. Everything here updates live — pick what feels good, turn off what doesn't.</P>
+
+            <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">main color</p>
+            <div className="flex flex-wrap gap-2.5">
+              {ACCENTS.map((a) => {
+                const active = settings.ambient.accent === a.id;
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => patchSettings({ ambient: { ...settings.ambient, accent: a.id } })}
+                    className={`btn-press flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 ${active ? "border-line2 bg-raise" : "border-line bg-panel/50 hover:border-line2"}`}
+                  >
+                    <span className="h-6 w-6 rounded-full border border-black/30" style={{ background: a.hex, boxShadow: active ? `0 0 14px ${a.hex}88` : "none" }} />
+                    <span className="text-left">
+                      <span className={`block text-[12.5px] font-semibold ${active ? "text-cream" : "text-parch"}`}>{a.name}</span>
+                      <span className="block font-mono text-[9.5px] text-dust">{a.hex}</span>
+                    </span>
+                    {active && <ICheck size={13} className="text-moss" />}
+                  </button>
+                );
+              })}
+            </div>
+            <P>The main color paints the run button, highlights, card glows and the cursor light. Status colors stay fixed so done/failed always read the same.</P>
+
+            <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">background</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(
                 [
-                  ["dots", "Dot field background", "the grid of dots that parts around your cursor"],
-                  ["glow", "Lantern glows", "the slow warm lights drifting behind panels"],
-                  ["sparkle", "Sparkling embers", "~3% of the dots twinkle like stray sparks"],
-                ] as const
-              ).map(([key, label, hint]) => (
-                <label key={key} className="flex cursor-pointer items-center gap-3.5 rounded-xl border border-line bg-panel/50 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={settings.ambient[key]}
-                    onChange={(e) => patchSettings({ ambient: { ...settings.ambient, [key]: e.target.checked } })}
-                    className="h-4 w-4 accent-[#f2a33c]"
-                  />
-                  <span>
-                    <span className="block text-[13.5px] font-semibold text-cream">{label}</span>
-                    <span className="block text-[11.5px] text-dust">{hint}</span>
-                  </span>
-                  {settings.ambient[key] && <ICheck size={15} className="ml-auto text-moss" />}
-                </label>
+                  { id: "none", name: "Quiet", hint: "plain dark canvas" },
+                  { id: "dots", name: "Dot field", hint: "dots that part around your cursor" },
+                  { id: "embers", name: "Rising embers", hint: "sparks drifting up from the forge" },
+                  { id: "stars", name: "Night sky", hint: "twinkling stars, the odd shooting star" },
+                ] as { id: ForgeSettings["ambient"]["background"]; name: string; hint: string }[]
+              ).map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => patchSettings({ ambient: { ...settings.ambient, background: b.id } })}
+                  className={`btn-press rounded-xl border px-3.5 py-3 text-left ${settings.ambient.background === b.id ? "border-ember/60 bg-ember/8" : "border-line bg-panel/50 hover:border-line2"}`}
+                >
+                  <span className={`block text-[13px] font-semibold ${settings.ambient.background === b.id ? "text-ember" : "text-cream"}`}>{b.name}</span>
+                  <span className="block text-[10.5px] text-dust">{b.hint}</span>
+                </button>
               ))}
             </div>
+            {settings.ambient.background !== "none" && (
+              <div className="rounded-xl border border-line bg-panel/40 p-4">
+                <label className="flex items-center justify-between font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
+                  density
+                  <span className="text-cream">{settings.ambient.density}</span>
+                </label>
+                <input
+                  type="range"
+                  min={20}
+                  max={140}
+                  value={settings.ambient.density}
+                  onChange={(e) => patchSettings({ ambient: { ...settings.ambient, density: Number(e.target.value) } })}
+                  className="mt-2 w-full accent-[var(--color-ember)]"
+                />
+                {settings.ambient.background === "dots" && (
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-[12px] text-parch">
+                      <input type="checkbox" checked={settings.ambient.wave} onChange={(e) => patchSettings({ ambient: { ...settings.ambient, wave: e.target.checked } })} className="accent-[var(--color-ember)]" />
+                      gentle wave
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-[12px] text-parch">
+                      <input type="checkbox" checked={settings.ambient.sparkle} onChange={(e) => patchSettings({ ambient: { ...settings.ambient, sparkle: e.target.checked } })} className="accent-[var(--color-ember)]" />
+                      sparkling dots
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">card glow</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: "off", name: "Off", hint: "plain hairline borders" },
+                  { id: "accent", name: "Accent glow", hint: "borders light up in the main color where you hover" },
+                  { id: "prismatic", name: "Prismatic", hint: "the glow slowly cycles through every hue" },
+                ] as { id: ForgeSettings["ambient"]["glow"]; name: string; hint: string }[]
+              ).map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => patchSettings({ ambient: { ...settings.ambient, glow: g.id } })}
+                  className={`btn-press rounded-xl border px-3.5 py-3 text-left ${settings.ambient.glow === g.id ? "border-ember/60 bg-ember/8" : "border-line bg-panel/50 hover:border-line2"}`}
+                >
+                  <span className={`block text-[13px] font-semibold ${settings.ambient.glow === g.id ? "text-ember" : "text-cream"}`}>{g.name}</span>
+                  <span className="block text-[10.5px] text-dust">{g.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">cursor</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  { id: "none", name: "Plain", hint: "the usual pointer, nothing extra" },
+                  { id: "lantern", name: "Lantern", hint: "a soft light follows your cursor with a lazy sway" },
+                  { id: "sparks", name: "Sparkle trail", hint: "tiny sparks drip off the cursor as you move" },
+                ] as { id: ForgeSettings["ambient"]["cursor"]; name: string; hint: string }[]
+              ).map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => patchSettings({ ambient: { ...settings.ambient, cursor: c.id } })}
+                  className={`btn-press rounded-xl border px-3.5 py-3 text-left ${settings.ambient.cursor === c.id ? "border-ember/60 bg-ember/8" : "border-line bg-panel/50 hover:border-line2"}`}
+                >
+                  <span className={`block text-[13px] font-semibold ${settings.ambient.cursor === c.id ? "text-ember" : "text-cream"}`}>{c.name}</span>
+                  <span className="block text-[10.5px] text-dust">{c.hint}</span>
+                </button>
+              ))}
+            </div>
+            {settings.ambient.cursor !== "none" && (
+              <div className="rounded-xl border border-line bg-panel/40 p-4">
+                <label className="flex items-center justify-between font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
+                  {settings.ambient.cursor === "lantern" ? "lantern size" : "sparkle spread"}
+                  <span className="text-cream">{settings.ambient.cursorSize}px</span>
+                </label>
+                <input
+                  type="range"
+                  min={120}
+                  max={420}
+                  step={20}
+                  value={settings.ambient.cursorSize}
+                  onChange={(e) => patchSettings({ ambient: { ...settings.ambient, cursorSize: Number(e.target.value) } })}
+                  className="mt-2 w-full accent-[var(--color-ember)]"
+                />
+              </div>
+            )}
+            <P>All animation honors your system's “reduce motion” setting automatically.</P>
           </>
         )}
       </div>

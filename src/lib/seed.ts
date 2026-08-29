@@ -4,9 +4,10 @@ const now = Date.now();
 const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
 
 const P = (base: string, style: string) => `${base}, ${style}`;
-const CLAY = "claymation style, medieval fantasy, soft lighting, charming tabletop RPG illustration, clean composition";
+const CLAY = "claymation style, soft warm lighting, charming handmade illustration, clean composition";
+const DND = "medieval fantasy, D&D marketplace, tabletop RPG charm";
 
-export const SEED_ROWS: ManifestRow[] = [
+const ROWS: ManifestRow[] = [
   {
     id: 1, filename: "shop_blacksmith.png",
     prompt: P("medieval blacksmith shop front, warm lantern light, wooden sign with hammer icon, cozy fantasy marketplace, glowing forge window", CLAY),

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ManifestRow, Toast } from "../types";
-import { STYLES } from "../types";
+import { STYLES, kindById } from "../types";
 import type { ForgeSettings } from "../lib/providers";
 import { SCRIBE_SYSTEMS, scribeChat } from "../lib/providers";
 import { autoFixFilename, validateFilename } from "../lib/validate";
@@ -53,9 +53,10 @@ export default function ScribeDrawer({
           : action === "style"
             ? `Subject: ${row.prompt || brief || row.filename}\nAvailable styles: ${allStyles.map((s) => s.id).join(", ")}`
             : `filename: ${row.filename}\nprompt: ${row.prompt}`;
+    const kindFlavor = kindById(row.kind).flavor;
     const system =
       action === "prompt"
-        ? SCRIBE_SYSTEMS.promptWriter(styleDef.block, row.category, mp.promptWriter)
+        ? SCRIBE_SYSTEMS.promptWriter(styleDef.block, row.category, kindFlavor, mp.promptWriter)
         : action === "filename"
           ? SCRIBE_SYSTEMS.filenameForger(row.category, mp.filenameForger)
           : action === "style"

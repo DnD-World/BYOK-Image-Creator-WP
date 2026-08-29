@@ -8,6 +8,8 @@ export const FULL_COLUMNS = [
   "negative_prompt",
   "note",
   "category",
+  "kind",
+  "rating",
   "item_id",
   "shop_id",
   "event_id",
@@ -39,6 +41,8 @@ export function rowsToCsv(rows: ManifestRow[]): string {
       r.negative_prompt ?? "",
       r.note ?? "",
       r.category,
+      r.kind ?? "",
+      r.rating ?? "",
       r.item_id,
       r.shop_id,
       r.event_id,
@@ -143,6 +147,11 @@ export function rowsFromCsv(headers: string[], records: string[][], takenIds: Se
       negative_prompt: get(rec, "negative_prompt") || get(rec, "negative") || undefined,
       note: get(rec, "note") || undefined,
       category: normCategory(get(rec, "category")),
+      kind: get(rec, "kind") || undefined,
+      rating: (get(rec, "rating") === "like" || get(rec, "rating") === "dislike" ? get(rec, "rating") : undefined) as
+        | "like"
+        | "dislike"
+        | undefined,
       item_id: get(rec, "item_id"),
       shop_id: get(rec, "shop_id"),
       event_id: get(rec, "event_id"),
