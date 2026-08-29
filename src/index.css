@@ -172,6 +172,96 @@ body {
   animation: breathe 2.4s ease-in-out infinite;
 }
 
+/* ---------- the fair ---------- */
+
+@keyframes tickerMove {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker {
+  animation: tickerMove 46s linear infinite;
+}
+.ticker:hover {
+  animation-play-state: paused;
+}
+
+@keyframes swayAnim {
+  0%, 100% { transform: rotate(2.4deg); }
+  50% { transform: rotate(-2.4deg); }
+}
+.sway {
+  animation: swayAnim 3.8s ease-in-out infinite;
+}
+@keyframes swaySlowAnim {
+  0%, 100% { transform: rotate(1.1deg); }
+  50% { transform: rotate(-1.1deg); }
+}
+.sway-slow {
+  animation: swaySlowAnim 5.6s ease-in-out infinite;
+}
+
+@keyframes lampFlicker {
+  0%, 100% { opacity: 0.95; }
+  12% { opacity: 0.65; }
+  24% { opacity: 1; }
+  47% { opacity: 0.75; }
+  63% { opacity: 1; }
+  81% { opacity: 0.7; }
+}
+.flicker-lamp {
+  animation: lampFlicker 4.2s steps(1, end) infinite;
+}
+.flicker-win {
+  animation: lampFlicker 6.5s steps(1, end) infinite;
+}
+
+@keyframes smokeRise {
+  0% { transform: translate(0, 0) scale(0.7); opacity: 0; }
+  25% { opacity: 0.16; }
+  100% { transform: translate(14px, -46px) scale(1.7); opacity: 0; }
+}
+.smoke {
+  animation: smokeRise 7s ease-out infinite;
+}
+
+@keyframes awningTilt {
+  0%, 100% { transform: rotate(0.4deg); }
+  50% { transform: rotate(-0.4deg); }
+}
+.awning-tilt {
+  animation: awningTilt 5s ease-in-out infinite;
+}
+
+.scallop {
+  -webkit-mask-image: radial-gradient(circle at 8px -3px, transparent 7px, #000 7.5px);
+  -webkit-mask-size: 16px 100%;
+  mask-image: radial-gradient(circle at 8px -3px, transparent 7px, #000 7.5px);
+  mask-size: 16px 100%;
+}
+
+@keyframes coinFly {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--tx, 20px), var(--ty, -46px)) scale(0.55) rotate(160deg); opacity: 0; }
+}
+.coin-fly {
+  animation: coinFly 0.85s cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0); opacity: 0; }
+  18% { opacity: 1; }
+  100% { transform: translateY(-34px); opacity: 0; }
+}
+.float-up {
+  animation: floatUp 1.15s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker, .sway, .sway-slow, .flicker-lamp, .flicker-win, .smoke, .awning-tilt {
+    animation: none;
+  }
+}
+
 @keyframes dashFlow {
   to { stroke-dashoffset: -26; }
 }

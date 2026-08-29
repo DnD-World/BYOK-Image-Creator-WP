@@ -58,3 +58,5 @@ const ROWS: ManifestRow[] = [
     seed: 23, model: "imagen-4-ultra", status: "imported", error: "", generated_at: iso(49 * 3600e3), imported_attachment_id: "8231",
   },
 ];
+
+export const SEED_ROWS: ManifestRow[] = ROWS.map((r) => ({ ...r, kind: "dnd" }));

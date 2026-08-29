@@ -119,6 +119,12 @@ export const IThumbDown = (p: IconProps) => (
     <path d="M17 13.5V4M17 4h2.5A1.5 1.5 0 0 1 21 5.5v6.4a1.5 1.5 0 0 1-1.5 1.6H17l-4.2 6.6A1.8 1.8 0 0 1 10.8 18v-3.5H5.7a2 2 0 0 1-2-2.4l1.4-6.1a2 2 0 0 1 2-1.5H17" />
   </S>
 );
+export const IWp = (p: IconProps) => (
+  <S {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M4.5 9.5h15M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+  </S>
+);
 export const IFolder = (p: IconProps) => (
   <S {...p}>
     <path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7Z" />

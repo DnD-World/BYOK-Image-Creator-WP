@@ -44,6 +44,7 @@ import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
 import { Btn, IAnvil, IFolder, IPlay, IQuill, ToastHost, IX } from "./components/ui";
 import type { FolderState } from "./components/SettingsDrawer";
+import MarketApp from "./market/MarketApp";
 
 const LS_KEY = "image-forge-manifest-v1";
 const LS_SETTINGS = "image-forge-settings-v1";
@@ -80,6 +81,23 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const nowTime = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
 
 export default function App() {
+  const [mode, setMode] = useState<"market" | "forge">("market");
+  return mode === "forge" ? (
+    <div className="relative h-full">
+      <ForgeApp />
+      <button
+        onClick={() => setMode("market")}
+        className="btn-press fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full border border-ember/60 bg-coal/95 px-4 py-2.5 font-display text-[13px] tracking-wide text-ember shadow-[0_10px_30px_rgba(0,0,0,0.55)] backdrop-blur hover:bg-panel"
+      >
+        ⚜ back to the fair
+      </button>
+    </div>
+  ) : (
+    <MarketApp onOpenForge={() => setMode("forge")} />
+  );
+}
+
+function ForgeApp() {
   const [rows, setRows] = useState<ManifestRow[]>(loadInitial);
   const [view, setView] = useState<View>("workbench");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("engines");
