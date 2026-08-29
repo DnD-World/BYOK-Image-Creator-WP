@@ -1,0 +1,534 @@
+import { useEffect, useRef, useState } from "react";
+import type { Category, LogEntry, ManifestRow, Status } from "../types";
+import { ASPECT_KEYS, ASPECTS, CATEGORIES, STATUS_META } from "../types";
+import { autoFixFilename, validateFilename } from "../lib/validate";
+import { formatCountdown, modelOptions } from "../lib/providers";
+import {
+  Btn,
+  CatChip,
+  IAlert,
+  ICheck,
+  IDownload,
+  IHammer,
+  IPlus,
+  IQuill,
+  IRetry,
+  ISearch,
+  ITrash,
+  IUpload,
+  IX,
+  Modal,
+  StatusChip,
+} from "./ui";
+
+export interface ManifestViewProps {
+  rows: ManifestRow[];
+  allRows: ManifestRow[];
+  total: number;
+  search: string;
+  setSearch: (s: string) => void;
+  statusFilter: Status | "all";
+  setStatusFilter: (s: Status | "all") => void;
+  catFilter: Category | "all";
+  setCatFilter: (c: Category | "all") => void;
+  selectedId: number | null;
+  onSelect: (id: number | null) => void;
+  openScribe: (id: number) => void;
+  startWizard: () => void;
+  addRow: () => void;
+  updateRow: (id: number, patch: Partial<ManifestRow>) => void;
+  deleteRow: (id: number) => void;
+  duplicateRow: (id: number) => void;
+  generateOne: (id: number) => void;
+  forceRetry: (id: number) => void;
+  setToPending: (id: number) => void;
+  markSkipped: (id: number) => void;
+  markImported: (id: number) => void;
+  downloadRow: (id: number) => void;
+  importCsv: (text: string, mode: "merge" | "replace", forgeAfter: boolean) => void;
+  exportCsv: () => void;
+  log: LogEntry[];
+  isRunning: boolean;
+  styleLock: string;
+  appendStyle: boolean;
+  setAppendStyle: (b: boolean) => void;
+}
+
+const timeAgo = (iso: string) => {
+  if (!iso) return "—";
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(d / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
+
+const Thumb = ({ row }: { row: ManifestRow }) => {
+  const dims = ASPECTS[row.aspect_ratio];
+  const ratio = dims.w / dims.h;
+  if (!row.preview) {
+    return (
+      <div
+        className={`flex items-center justify-center overflow-hidden rounded-lg border border-dashed border-line2 bg-[#191310] ${
+          row.status === "generating" ? "shimmer" : ""
+        }`}
+        style={{ width: 64, height: Math.round(64 / ratio) }}
+      >
+        {row.status === "generating" ? <IHammer size={16} className="hammer-swing text-ember" /> : <span className="font-mono text-[9px] text-dust">{row.aspect_ratio}</span>}
+      </div>
+    );
+  }
+  const isSvg = row.preview.startsWith("<svg") || row.preview.startsWith("data:image/svg");
+  return (
+    <div className="thumb-zoom overflow-hidden rounded-lg border border-line shadow-[0_4px_14px_rgba(0,0,0,0.35)]" style={{ width: 64, height: Math.round(64 / ratio) }}>
+      {isSvg ? (
+        <div className="develop h-full w-full" dangerouslySetInnerHTML={{ __html: row.preview }} />
+      ) : (
+        <img src={row.preview} alt={row.filename} className="develop h-full w-full object-cover" />
+      )}
+    </div>
+  );
+};
+
+export default function ManifestView(p: ManifestViewProps) {
+  const [importOpen, setImportOpen] = useState(false);
+  const selected = p.allRows.find((r) => r.id === p.selectedId) ?? null;
+  const logRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [p.log]);
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* toolbar */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-coal/50 px-4 py-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-[#191310] px-2.5 py-1.5">
+          <ISearch size={13} className="text-dust" />
+          <input
+            value={p.search}
+            onChange={(e) => p.setSearch(e.target.value)}
+            placeholder="search manifest…"
+            className="w-40 bg-transparent text-[12.5px] text-cream placeholder:text-dust/70"
+          />
+        </div>
+        <select
+          value={p.statusFilter}
+          onChange={(e) => p.setStatusFilter(e.target.value as Status | "all")}
+          className="rounded-lg border border-line bg-[#191310] px-2 py-1.5 font-mono text-[11.5px] text-parch"
+        >
+          <option value="all">all statuses</option>
+          {Object.keys(STATUS_META).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          value={p.catFilter}
+          onChange={(e) => p.setCatFilter(e.target.value as Category | "all")}
+          className="rounded-lg border border-line bg-[#191310] px-2 py-1.5 font-mono text-[11.5px] text-parch"
+        >
+          <option value="all">all categories</option>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <span className="font-mono text-[10.5px] text-dust">
+          {p.rows.length}/{p.total} rows
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <Btn onClick={() => setImportOpen(true)}>
+            <IUpload size={13} /> Import CSV
+          </Btn>
+          <Btn onClick={p.exportCsv}>
+            <IDownload size={13} /> Export
+          </Btn>
+          <Btn variant="primary" onClick={p.addRow}>
+            <IPlus size={13} /> Add row
+          </Btn>
+        </div>
+      </div>
+
+      {/* table */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        {p.rows.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+            <p className="font-display text-2xl text-cream">The workbench is empty.</p>
+            <p className="max-w-sm text-[13.5px] leading-relaxed text-parch">
+              Start with the wizard — it walks you through one easy choice at a time and lays out a whole batch of pictures for you.
+            </p>
+            <div className="flex gap-2">
+              <Btn variant="primary" onClick={p.startWizard}>
+                <IHammer size={13} /> Start the wizard
+              </Btn>
+              <Btn onClick={p.addRow}>
+                <IPlus size={13} /> Add a row
+              </Btn>
+              <Btn onClick={() => setImportOpen(true)}>
+                <IUpload size={13} /> Import CSV
+              </Btn>
+            </div>
+          </div>
+        ) : (
+          <table className="w-full border-collapse text-left">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-line bg-[#1c1510] font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
+                {["preview / filename", "category", "model", "aspect", "status", "generated", ""].map((h, i) => (
+                  <th key={i} className="px-3 py-2.5 font-medium first:pl-4">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {p.rows.map((row) => (
+                <tr
+                  key={row.id}
+                  onClick={() => p.onSelect(row.id)}
+                  className={`cursor-pointer border-b border-line/50 transition-colors ${
+                    p.selectedId === row.id ? "bg-ember/8" : "hover:bg-raise/40"
+                  }`}
+                >
+                  <td className="px-3 py-2.5 first:pl-4">
+                    <div className="flex items-center gap-3">
+                      <Thumb row={row} />
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-[12px] text-cream">{row.filename}</p>
+                        <p className="mt-0.5 max-w-[300px] truncate text-[11px] text-dust">
+                          {row.note ? <span className="text-ember">✎ {row.note}</span> : row.prompt || "— no prompt yet"}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <CatChip category={row.category} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {row.model ? (
+                      <span className="rounded-md border border-potion/35 bg-potion/8 px-1.5 py-0.5 font-mono text-[10.5px] text-potion">{row.model}</span>
+                    ) : (
+                      <span className="font-mono text-[10.5px] text-dust/60">default</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-[12px] text-parch">{row.aspect_ratio}</td>
+                  <td className="px-3 py-2.5">
+                    <StatusChip status={row.status} pulse={row.status === "generating"} />
+                    {row.retry_at && Date.parse(row.retry_at) > Date.now() && (
+                      <span className="mt-1 block font-mono text-[9.5px] text-ember">retry {formatCountdown(Date.parse(row.retry_at))}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-[11px] text-dust">{timeAgo(row.generated_at)}</td>
+                  <td className="px-3 py-2.5">
+                    {(row.status === "pending" || row.status === "failed" || row.status === "skipped") && !p.isRunning && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          p.generateOne(row.id);
+                        }}
+                        title="Generate this row"
+                        className="btn-press rounded-lg border border-ember/40 bg-ember/10 p-1.5 text-ember hover:bg-ember/25"
+                      >
+                        <IHammer size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* console strip */}
+      <div className="shrink-0 border-t border-line bg-[#161009]">
+        <div className="flex items-center gap-2 px-4 pt-2">
+          <span className={`h-1.5 w-1.5 rounded-full ${p.isRunning ? "pulse-dot bg-ember" : "bg-dust/50"}`} />
+          <span className="font-mono text-[9.5px] tracking-[0.22em] text-dust uppercase">forge console</span>
+        </div>
+        <div ref={logRef} className="h-[92px] overflow-y-auto px-4 py-2 font-mono text-[11px] leading-[1.55]">
+          {p.log.length === 0 && <p className="text-dust/60">— quiet so far. Light the forge with Run queue.</p>}
+          {p.log.map((l, i) => (
+            <p key={i} className={l.kind === "ok" ? "text-moss" : l.kind === "err" ? "text-blood" : l.kind === "run" ? "text-ember" : "text-parch/80"}>
+              <span className="text-dust/60">[{l.t}]</span> {l.msg}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={(text, mode, forge) => {
+          p.importCsv(text, mode, forge);
+          setImportOpen(false);
+        }}
+      />
+
+      {selected && <RowDrawer row={selected} {...p} />}
+    </div>
+  );
+}
+
+/* ---------------- row drawer ---------------- */
+
+const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+
+function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
+  const { row, updateRow, deleteRow, duplicateRow, generateOne, forceRetry, setToPending, markSkipped, markImported, downloadRow, openScribe, onSelect } = p;
+  const checks = validateFilename(row.filename, row.category, p.allRows.map((x) => ({ id: x.id, filename: x.filename })), row.id);
+  const bad = checks.filter((c) => !c.pass);
+
+  return (
+    <aside className="slide-in-right flex h-full w-[400px] shrink-0 flex-col overflow-y-auto border-l border-line bg-coal/80 p-4 backdrop-blur">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-display text-[15px] tracking-wide text-cream">Row #{row.id}</h3>
+        <div className="flex items-center gap-2">
+          <StatusChip status={row.status} pulse={row.status === "generating"} />
+          <button onClick={() => onSelect(null)} className="btn-press rounded-lg p-1.5 text-dust hover:bg-raise hover:text-cream">
+            <IX size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {/* preview */}
+        <div className="flex justify-center rounded-xl border border-line bg-[#191310] p-3">
+          <Thumb row={row} />
+        </div>
+
+        {/* filename */}
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="font-mono text-[10px] tracking-[0.2em] text-dust uppercase">filename</label>
+            <button
+              onClick={() => updateRow(row.id, { filename: autoFixFilename(row.filename, row.category) })}
+              className="btn-press font-mono text-[10px] text-ember underline decoration-ember/40 underline-offset-2"
+            >
+              auto-fix
+            </button>
+          </div>
+          <input value={row.filename} onChange={(e) => updateRow(row.id, { filename: e.target.value })} className={field} />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {checks.map((c) => (
+              <span
+                key={c.id}
+                title={c.detail}
+                className={`flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[9.5px] ${
+                  c.pass ? "border-moss/35 bg-moss/8 text-moss" : "border-blood/40 bg-blood/8 text-blood"
+                }`}
+              >
+                {c.pass ? <ICheck size={9} /> : <IX size={9} />} {c.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* category + aspect */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">category</label>
+            <select value={row.category} onChange={(e) => updateRow(row.id, { category: e.target.value as Category })} className={field}>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">aspect</label>
+            <select value={row.aspect_ratio} onChange={(e) => updateRow(row.id, { aspect_ratio: e.target.value as (typeof ASPECT_KEYS)[number] })} className={field}>
+              {ASPECT_KEYS.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* prompt */}
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">prompt</label>
+          <textarea value={row.prompt} onChange={(e) => updateRow(row.id, { prompt: e.target.value })} rows={4} className={`${field} resize-y`} />
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-dust">
+            <input type="checkbox" checked={p.appendStyle} onChange={(e) => p.setAppendStyle(e.target.checked)} className="accent-[#f2a33c]" />
+            append the “{p.styleLock}” style block when generating
+          </label>
+        </div>
+
+        {/* negative prompt */}
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">negative prompt · what to avoid</label>
+          <textarea
+            value={row.negative_prompt ?? ""}
+            onChange={(e) => updateRow(row.id, { negative_prompt: e.target.value || undefined })}
+            rows={2}
+            placeholder="text, watermark, extra fingers…"
+            className={`${field} resize-y`}
+          />
+        </div>
+
+        {/* model + seed */}
+        <div className="grid grid-cols-[1fr_92px] gap-2.5">
+          <div>
+            <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">model · blank = default engine</label>
+            <input value={row.model} onChange={(e) => updateRow(row.id, { model: e.target.value })} list="forge-models" placeholder="imagen-4-ultra, flux…" className={field} />
+            <datalist id="forge-models">
+              {modelOptions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">seed</label>
+            <input type="number" value={row.seed} onChange={(e) => updateRow(row.id, { seed: parseInt(e.target.value, 10) || 0 })} className={field} />
+          </div>
+        </div>
+
+        {/* note */}
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">note · becomes an instruction on redo</label>
+          <input
+            value={row.note ?? ""}
+            onChange={(e) => updateRow(row.id, { note: e.target.value || undefined })}
+            placeholder="e.g. warmer light, bigger goat"
+            className={field}
+          />
+        </div>
+
+        {/* errors + cooldown */}
+        {row.error && (
+          <div className="rounded-lg border border-blood/30 bg-blood/8 px-3 py-2">
+            <p className="font-mono text-[10px] tracking-[0.2em] text-blood uppercase">last error</p>
+            <p className="mt-1 font-mono text-[11.5px] text-blood/90">{row.error}</p>
+          </div>
+        )}
+        {row.retry_at && Date.parse(row.retry_at) > Date.now() && (
+          <div className="rounded-lg border border-ember/35 bg-ember/8 px-3 py-2.5">
+            <p className="font-mono text-[10px] tracking-[0.2em] text-ember uppercase">rate-limit cooldown</p>
+            <p className="mt-1 text-[12px] text-parch">
+              the queue retries in <span className="font-mono text-ember">{formatCountdown(Date.parse(row.retry_at))}</span>
+            </p>
+            <button
+              onClick={() => forceRetry(row.id)}
+              className="btn-press mt-2 rounded-md border border-ember/50 bg-ember/12 px-2.5 py-1 font-mono text-[10.5px] tracking-wide text-ember uppercase hover:bg-ember/25"
+            >
+              ⚡ force retry now
+            </button>
+          </div>
+        )}
+
+        {/* actions */}
+        <div className="grid grid-cols-2 gap-2">
+          <Btn variant="primary" className="justify-center" disabled={p.isRunning} onClick={() => generateOne(row.id)}>
+            <IHammer size={13} /> Generate
+          </Btn>
+          <Btn className="justify-center" disabled={!row.preview} onClick={() => downloadRow(row.id)}>
+            <IDownload size={13} /> Save PNG
+          </Btn>
+          <Btn className="justify-center" onClick={() => openScribe(row.id)}>
+            <IQuill size={13} /> Scribe
+          </Btn>
+          <Btn className="justify-center" onClick={() => duplicateRow(row.id)}>
+            <IPlus size={13} /> Duplicate
+          </Btn>
+          {(row.status === "failed" || row.status === "skipped" || row.status === "done") && (
+            <Btn className="justify-center" onClick={() => setToPending(row.id)}>
+              <IRetry size={13} /> To pending
+            </Btn>
+          )}
+          {row.status !== "skipped" && row.status !== "imported" && (
+            <Btn className="justify-center" onClick={() => markSkipped(row.id)}>
+              <IX size={13} /> Skip
+            </Btn>
+          )}
+          {row.status === "done" && (
+            <Btn variant="moss" className="justify-center" onClick={() => markImported(row.id)}>
+              <ICheck size={13} /> Mark imported
+            </Btn>
+          )}
+          <Btn variant="danger" className="justify-center" onClick={() => deleteRow(row.id)}>
+            <ITrash size={13} /> Delete
+          </Btn>
+        </div>
+        {bad.length > 0 && (
+          <p className="flex items-start gap-2 text-[11px] text-dust">
+            <IAlert size={12} className="mt-0.5 shrink-0 text-ember" />
+            The queue still runs rows with filename warnings — fix them before you hand files to another project.
+          </p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+/* ---------------- import modal ---------------- */
+
+function ImportModal({
+  open,
+  onClose,
+  onImport,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onImport: (text: string, mode: "merge" | "replace", forgeAfter: boolean) => void;
+}) {
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState<"merge" | "replace">("merge");
+  const [forgeAfter, setForgeAfter] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Import a CSV manifest">
+      <div className="space-y-4">
+        <p className="text-[13px] leading-relaxed text-parch">
+          Anything with a header row works — the forge reads <span className="font-mono text-cream">filename, prompt, negative_prompt, category, style, aspect_ratio, model, status</span> and fills the rest with defaults. Only <span className="font-mono text-cream">filename</span> is required.
+        </p>
+        <div className="flex gap-2">
+          <Btn onClick={() => fileRef.current?.click()}>
+            <IUpload size={13} /> Choose .csv file
+          </Btn>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) setText(await f.text());
+              e.target.value = "";
+            }}
+          />
+          <span className="self-center font-mono text-[10.5px] text-dust">or paste below</span>
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={7}
+          placeholder={"filename,prompt,category,model\nshop_tavern.png,\"ramshackle tavern at dusk\",shop,imagen-4-ultra"}
+          className={`${field} resize-y font-mono text-[11.5px]`}
+        />
+        <div className="flex items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-parch">
+            <input type="radio" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-[#f2a33c]" />
+            merge into the manifest
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-parch">
+            <input type="radio" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-[#f2a33c]" />
+            replace everything
+          </label>
+        </div>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-ember/30 bg-ember/6 px-3.5 py-2.5">
+          <input type="checkbox" checked={forgeAfter} onChange={(e) => setForgeAfter(e.target.checked)} className="mt-0.5 accent-[#f2a33c]" />
+          <span className="text-[12.5px] leading-snug text-parch">
+            <span className="font-semibold text-ember">forge immediately after import</span>
+            <span className="block text-[11px] text-dust">every pending row in the CSV goes straight into the queue — CSV in, images out</span>
+          </span>
+        </label>
+        <div className="flex justify-end gap-2 border-t border-line pt-4">
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="primary" disabled={!text.trim()} onClick={() => onImport(text, mode, forgeAfter)}>
+            <ICheck size={13} /> {forgeAfter ? "Import & forge" : "Import rows"}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
