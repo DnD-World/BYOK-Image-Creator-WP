@@ -5,7 +5,7 @@ import type { ForgeSettings } from "../lib/providers";
 import { SCRIBE_SYSTEMS, formatCountdown, scribeChat } from "../lib/providers";
 import type { Batch, SavedSetup } from "../lib/batches";
 import { BorderGlow } from "./effects";
-import { Btn, CatChip, ICheck, IHammer, IPlay, IRetry, ISearch, IThumbDown, IThumbUp, ITrash, IWand, IX, StatusChip } from "./ui";
+import { Btn, CatChip, ICheck, IDownload, IHammer, IPlay, IRetry, ISearch, IThumbDown, IThumbUp, ITrash, IWand, IX, StatusChip } from "./ui";
 
 const RatioThumb = ({ row, width = 150 }: { row: ManifestRow; width?: number }) => {
   const dims = ASPECTS[row.aspect_ratio];
@@ -379,12 +379,14 @@ export function BatchLibrary({
   onOpen,
   onRerun,
   onDelete,
+  onExport,
 }: {
   batches: Batch[];
   rows: ManifestRow[];
   onOpen: (id: string) => void;
   onRerun: (id: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string) => void;
 }) {
   return (
     <div className="mx-auto w-full max-w-4xl px-6 py-10">
@@ -432,8 +434,11 @@ export function BatchLibrary({
                       {cooling.length > 0 && cooling[0].retry_at ? ` · cooling ${formatCountdown(Date.parse(cooling[0].retry_at))}` : ""}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Btn onClick={() => onOpen(b.id)}>Open</Btn>
+                    <Btn variant="ghost" onClick={() => onExport(b.id)} disabled={bRows.length === 0}>
+                      <IDownload size={12} /> Export CSV
+                    </Btn>
                     <Btn variant="ghost" onClick={() => onRerun(b.id)} disabled={!bRows.some((r) => r.status === "failed" || r.status === "pending")}>
                       <IRetry size={12} /> Rerun
                     </Btn>

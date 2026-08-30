@@ -47,6 +47,11 @@ export interface ManifestViewProps {
   downloadRow: (id: number) => void;
   importCsv: (text: string, mode: "merge" | "replace", forgeAfter: boolean) => void;
   exportCsv: () => void;
+  exportXlsx: () => void;
+  compare: null | { rowId: number; variantSeed: number; variant: string };
+  strikeVariant: (id: number) => void;
+  keepVariant: (id: number) => void;
+  discardVariant: () => void;
   log: LogEntry[];
   isRunning: boolean;
   styleLock: string;
@@ -141,7 +146,10 @@ export default function ManifestView(p: ManifestViewProps) {
             <IUpload size={13} /> Import CSV
           </Btn>
           <Btn onClick={p.exportCsv}>
-            <IDownload size={13} /> Export
+            <IDownload size={13} /> CSV
+          </Btn>
+          <Btn onClick={p.exportXlsx}>
+            <IDownload size={13} /> XLSX
           </Btn>
           <Btn variant="primary" onClick={p.addRow}>
             <IPlus size={13} /> Add row
@@ -274,7 +282,7 @@ export default function ManifestView(p: ManifestViewProps) {
 const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 
 function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
-  const { row, updateRow, deleteRow, duplicateRow, generateOne, forceRetry, setToPending, markSkipped, markImported, downloadRow, openScribe, onSelect } = p;
+  const { row, updateRow, deleteRow, duplicateRow, generateOne, forceRetry, setToPending, markSkipped, markImported, downloadRow, openScribe, onSelect, compare, strikeVariant, keepVariant, discardVariant } = p;
   const checks = validateFilename(row.filename, row.category, p.allRows.map((x) => ({ id: x.id, filename: x.filename })), row.id);
   const bad = checks.filter((c) => !c.pass);
 
@@ -415,10 +423,47 @@ function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
           </div>
         )}
 
+        {/* variant compare */}
+        {compare && compare.rowId === row.id && (
+          <div className="rounded-xl border border-potion/40 bg-potion/6 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="font-mono text-[10px] tracking-[0.2em] text-potion uppercase">variant · seed {compare.variantSeed}</p>
+              <button onClick={discardVariant} className="btn-press font-mono text-[10px] text-dust hover:text-cream">✕ dismiss</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <figure>
+                <Thumb row={row} />
+                <figcaption className="mt-1 text-center font-mono text-[9.5px] text-dust">original · seed {row.seed}</figcaption>
+              </figure>
+              <figure className="pop-in">
+                <div className="thumb-zoom overflow-hidden rounded-lg border border-potion/50">
+                  {compare.variant.startsWith("<svg") || compare.variant.startsWith("image/svg") ? (
+                    <div className="h-full w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: compare.variant }} />
+                  ) : (
+                    <img src={compare.variant} alt="variant" className="h-full w-full object-cover" />
+                  )}
+                </div>
+                <figcaption className="mt-1 text-center font-mono text-[9.5px] text-potion">variant · seed {compare.variantSeed}</figcaption>
+              </figure>
+            </div>
+            <div className="mt-2.5 flex gap-2">
+              <Btn variant="moss" className="flex-1 justify-center" onClick={() => keepVariant(row.id)}>
+                <ICheck size={13} /> Keep variant
+              </Btn>
+              <Btn className="flex-1 justify-center" onClick={discardVariant}>
+                <IX size={13} /> Keep original
+              </Btn>
+            </div>
+          </div>
+        )}
+
         {/* actions */}
         <div className="grid grid-cols-2 gap-2">
           <Btn variant="primary" className="justify-center" disabled={p.isRunning} onClick={() => generateOne(row.id)}>
             <IHammer size={13} /> Generate
+          </Btn>
+          <Btn className="justify-center" disabled={!row.preview} onClick={() => strikeVariant(row.id)}>
+            <IRetry size={13} /> Variant
           </Btn>
           <Btn className="justify-center" disabled={!row.preview} onClick={() => downloadRow(row.id)}>
             <IDownload size={13} /> Save PNG

@@ -5,4 +5,6 @@ export interface FolderState {
   /** folder handle persisted but permission needs re-confirming */
   pendingName: string | null;
   error: string;
+  /** Tauri desktop build only — the plain path (no permission dance needed) */
+  path?: string;
 }

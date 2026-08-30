@@ -289,13 +289,26 @@ export function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: 
   return (
     <div className="pointer-events-none fixed right-4 bottom-4 z-[70] flex w-[340px] flex-col gap-2">
       {toasts.map((t) => (
-        <button
+        <div
           key={t.id}
+          role="status"
           onClick={() => dismiss(t.id)}
-          className={`slide-in-right pointer-events-auto rounded-xl border bg-panel/95 px-4 py-3 text-left shadow-[0_16px_40px_rgba(0,0,0,0.5)] backdrop-blur ${tone[t.kind]}`}
+          className={`slide-in-right pointer-events-auto cursor-pointer rounded-xl border bg-panel/95 px-4 py-3 text-left shadow-[0_16px_40px_rgba(0,0,0,0.5)] backdrop-blur ${tone[t.kind]}`}
         >
           <span className="text-[12.5px] leading-snug text-cream">{t.msg}</span>
-        </button>
+          {t.action && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                t.action?.run();
+                dismiss(t.id);
+              }}
+              className="btn-press mt-2 block rounded-md border border-ember/50 bg-ember/12 px-2.5 py-1 font-mono text-[10.5px] tracking-wide text-ember uppercase hover:bg-ember/25"
+            >
+              {t.action.label}
+            </button>
+          )}
+        </div>
       ))}
     </div>
   );

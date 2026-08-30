@@ -30,6 +30,16 @@ import {
 } from "./lib/output";
 import type { Batch, BatchSetup, FactoryItem, SavedSetup } from "./lib/batches";
 import { factoryToRows, loadBatches, loadSetups, saveBatches, saveSetups, uid } from "./lib/batches";
+import {
+  clearTauriFolder,
+  isTauri,
+  loadTauriFolder,
+  saveTauriFolder,
+  tauriFolderName,
+  tauriPickFolder,
+  tauriWriteImage,
+  tauriWriteText,
+} from "./lib/tauriFs";
 import Sidebar from "./components/Sidebar";
 import ManifestView from "./components/ManifestView";
 import DocsView from "./components/DocsView";
@@ -110,6 +120,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [wpOpen, setWpOpen] = useState(false);
   const [wizardPreset, setWizardPreset] = useState<SavedSetup | null>(null);
   const [factoryItems, setFactoryItems] = useState<FactoryItem[]>([]);
+  const [compare, setCompare] = useState<null | { rowId: number; variantSeed: number; variant: string }>(null);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -117,6 +128,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   settingsRef.current = settings;
   const stopRef = useRef(false);
   const folderRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const tauriFolderRef = useRef<string | null>(null);
   const imagesRef = useRef<Map<string, Blob>>(new Map());
   const toastId = useRef(1);
 
@@ -139,8 +151,19 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   useEffect(() => saveBatches(batches), [batches]);
   useEffect(() => saveSetups(setups), [setups]);
 
+
+
   /* ---------- restore linked folder ---------- */
   useEffect(() => {
+    // Tauri build: the saved path just works — no permission dance
+    if (isTauri()) {
+      const saved = loadTauriFolder();
+      if (saved) {
+        tauriFolderRef.current = saved;
+        setFolder({ linked: true, name: tauriFolderName(saved), pendingName: null, error: "", path: saved });
+      }
+      return;
+    }
     let alive = true;
     (async () => {
       if (!fsSupported()) return;
@@ -163,10 +186,10 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   }, []);
 
   /* ---------- helpers ---------- */
-  const pushToast = useCallback((kind: Toast["kind"], msg: string) => {
+  const pushToast = useCallback((kind: Toast["kind"], msg: string, action?: Toast["action"]) => {
     const id = toastId.current++;
-    setToasts((t) => [...t.slice(-3), { id, kind, msg }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4600);
+    setToasts((t) => [...t.slice(-3), { id, kind, msg, action }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 7000 : 4600);
   }, []);
 
   const pushLog = useCallback((msg: string, kind: LogEntry["kind"]) => {
@@ -180,6 +203,24 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const patchSettings = useCallback((p: Partial<ForgeSettings>) => {
     setSettings((s) => ({ ...s, ...p }));
   }, []);
+
+  /* ---------- auto-retry: rows whose cooldown elapsed go back in the queue ---------- */
+  useEffect(() => {
+    if (!settings.autoRetry) return;
+    const t = setInterval(() => {
+      const due = rowsRef.current.filter(
+        (r) => (r.status === "failed" || r.status === "pending") && r.retry_at && Date.parse(r.retry_at) <= Date.now()
+      );
+      if (due.length === 0) return;
+      setRows((prev) =>
+        prev.map((r) =>
+          due.some((d) => d.id === r.id) ? { ...r, status: "pending" as Status, retry_at: "", error: "" } : r
+        )
+      );
+      pushLog(`⏰ ${due.length} row${due.length > 1 ? "s" : ""} cooldown elapsed — back in the queue`, "info");
+    }, 20000);
+    return () => clearInterval(t);
+  }, [settings.autoRetry, pushLog]);
 
   const getBlobFor = useCallback(async (r: ManifestRow): Promise<Blob | null> => {
     const cached = imagesRef.current.get(r.filename);
@@ -202,9 +243,14 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
 
   const saveToFolder = useCallback(
     async (row: ManifestRow, blob: Blob) => {
-      const h = folderRef.current;
-      if (!h) return;
       try {
+        if (isTauri() && tauriFolderRef.current) {
+          const path = await tauriWriteImage(tauriFolderRef.current, row, blob);
+          pushLog(`⤓ ${row.filename} → ${path}`, "ok");
+          return;
+        }
+        const h = folderRef.current;
+        if (!h) return;
         const path = await writeImageFile(h, row, blob);
         pushLog(`⤓ ${row.filename} → ${path}`, "ok");
       } catch {
@@ -334,10 +380,16 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       setIsRunning(false);
       const halted = stopRef.current;
       pushLog(`── run ${halted ? "halted" : "complete"} · ${done} struck · ${failed} failed ──`, failed > 0 ? "err" : "ok");
-      if (!halted && folderRef.current && settingsRef.current.writeCsvOnSync) {
+      const csvTargets = tauriFolderRef.current ?? null;
+      if (!halted && settingsRef.current.writeCsvOnSync && (folderRef.current || csvTargets)) {
         try {
-          await writeTextFile(folderRef.current, "marketplace-images.csv", rowsToCsv(rowsRef.current));
-          pushLog(`⤓ marketplace-images.csv refreshed in ${folderRef.current.name}`, "ok");
+          if (csvTargets) {
+            await tauriWriteText(csvTargets, "marketplace-images.csv", rowsToCsv(rowsRef.current));
+            pushLog(`⤓ marketplace-images.csv refreshed in ${tauriFolderName(csvTargets)}`, "ok");
+          } else if (folderRef.current) {
+            await writeTextFile(folderRef.current, "marketplace-images.csv", rowsToCsv(rowsRef.current));
+            pushLog(`⤓ marketplace-images.csv refreshed in ${folderRef.current.name}`, "ok");
+          }
         } catch { /* non-fatal */ }
       }
       pushToast(
@@ -380,10 +432,21 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
 
   const deleteRow = useCallback(
     (id: number) => {
-      const r = rowsRef.current.find((x) => x.id === id);
+      const idx = rowsRef.current.findIndex((x) => x.id === id);
+      if (idx === -1) return;
+      const r = rowsRef.current[idx];
       setRows((prev) => prev.filter((x) => x.id !== id));
       setSelectedId((s) => (s === id ? null : s));
-      pushToast("info", `${r?.filename ?? "Row"} removed from the manifest.`);
+      pushToast("info", `${r.filename} removed from the manifest.`, {
+        label: "undo",
+        run: () =>
+          setRows((prev) => {
+            if (prev.some((x) => x.id === id)) return prev; // already back
+            const next = [...prev];
+            next.splice(Math.min(idx, next.length), 0, r);
+            return next;
+          }),
+      });
     },
     [pushToast]
   );
@@ -489,6 +552,22 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
 
   /* ---------- output ---------- */
   const linkFolder = useCallback(async () => {
+    if (isTauri()) {
+      try {
+        const picked = await tauriPickFolder();
+        if (!picked) return; // user cancelled
+        tauriFolderRef.current = picked;
+        saveTauriFolder(picked);
+        setFolder({ linked: true, name: tauriFolderName(picked), pendingName: null, error: "", path: picked });
+        pushLog(`⤓ output folder linked (native): ${picked}`, "ok");
+        pushToast("ok", `Linked ${tauriFolderName(picked)} — images will land in shops/items/events/npcs.`);
+      } catch (e) {
+        const msg = `Couldn't link that folder (${(e as { message?: string })?.message ?? "unknown reason"}).`;
+        setFolder((f) => ({ ...f, error: msg }));
+        pushToast("err", msg);
+      }
+      return;
+    }
     if (!fsSupported()) {
       setFolder((f) => ({ ...f, error: "This browser can't link folders (needs Chrome or Edge). The ZIP door always works." }));
       pushToast("err", "Folder linking needs Chrome or Edge — use the ZIP instead.");
@@ -520,14 +599,18 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
 
   const unlinkFolder = useCallback(async () => {
     folderRef.current = null;
+    tauriFolderRef.current = null;
+    clearTauriFolder();
     await clearDirHandle();
     setFolder({ linked: false, name: "", pendingName: null, error: "" });
     pushToast("info", "Output folder unlinked.");
   }, [pushToast]);
 
   const syncAllToFolder = useCallback(async () => {
+    const tauri = isTauri();
+    const tRoot = tauriFolderRef.current;
     const h = folderRef.current;
-    if (!h) {
+    if (!tRoot && !h) {
       pushToast("err", "Link an output folder first — Settings → Folders.");
       return;
     }
@@ -541,12 +624,14 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       const b = await getBlobFor(r);
       if (!b) continue;
       try {
-        await writeImageFile(h, r, b);
+        if (tRoot) await tauriWriteImage(tRoot, r, b);
+        else if (h) await writeImageFile(h, r, b);
         ok++;
       } catch { /* counted */ }
     }
-    pushLog(`⤓ folder sync complete · ${ok}/${targets.length} plates written into ${h.name}`, "ok");
-    pushToast("ok", `${ok} plate${ok === 1 ? "" : "s"} written to ${h.name}.`);
+    const name = tRoot ? tauriFolderName(tRoot) : h?.name ?? "folder";
+    pushLog(`⤓ folder sync complete · ${ok}/${targets.length} plates written into ${name}`, "ok");
+    pushToast("ok", `${ok} plate${ok === 1 ? "" : "s"} written to ${name}.`);
   }, [getBlobFor, pushLog, pushToast]);
 
   const zipAll = useCallback(async () => {
@@ -577,6 +662,86 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     },
     [getBlobFor, pushToast]
   );
+
+  /* ---------- strike a variant for side-by-side compare ---------- */
+  const strikeVariant = useCallback(
+    async (id: number) => {
+      const row = rowsRef.current.find((x) => x.id === id);
+      if (!row) return;
+      if (!row.preview) {
+        pushToast("info", "Generate the original first, then forge a variant to compare.");
+        return;
+      }
+      const variantSeed = row.seed + 1;
+      const s = settingsRef.current;
+      pushToast("info", `Forging a variant of ${row.filename}…`);
+      try {
+        let variant: string;
+        const isSvgPlate = row.preview.startsWith("<svg") || row.preview.startsWith("image/svg");
+        if (isSvgPlate || s.provider === "simulated") {
+          // procedural — instant and free
+          variant = renderPreview({ ...row, seed: variantSeed });
+        } else {
+          // real engine — one more API image, so we reuse the same route
+          const { dataUrl } = await generateReal({ ...row, seed: variantSeed }, s, undefined, () => {}, 0);
+          variant = dataUrl;
+        }
+        setCompare({ rowId: id, variantSeed, variant });
+      } catch (e) {
+        pushToast("err", `Variant failed — ${(e as { message?: string })?.message ?? "unknown"}`);
+      }
+    },
+    [pushToast]
+  );
+
+  const keepVariant = useCallback(
+    (id: number) => {
+      if (!compare || compare.rowId !== id) return;
+      const blob = dataUrlToBlob(compare.variant);
+      const row = rowsRef.current.find((x) => x.id === id);
+      if (row) imagesRef.current.set(row.filename, blob);
+      patchRow(id, { preview: compare.variant, seed: compare.variantSeed });
+      setCompare(null);
+      pushToast("ok", "Variant kept — it replaces the original.");
+    },
+    [compare, patchRow, pushToast]
+  );
+
+  /* ---------- exports ---------- */
+  const exportBatchCsv = useCallback(
+    (batchId: string) => {
+      const b = batches.find((x) => x.id === batchId);
+      if (!b) return;
+      const subset = rowsRef.current.filter((r) => b.rowIds.includes(r.id));
+      downloadCsv(`${b.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}.csv`, rowsToCsv(subset));
+      pushToast("ok", `Exported ${subset.length} rows for “${b.name}”.`);
+    },
+    [batches, pushToast]
+  );
+
+  const exportXlsx = useCallback(async () => {
+    try {
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(
+        rowsRef.current.map((r) => {
+          const dims = ASPECTS[r.aspect_ratio];
+          return {
+            id: r.id, filename: r.filename, prompt: r.prompt, negative_prompt: r.negative_prompt ?? "",
+            note: r.note ?? "", category: r.category, kind: r.kind ?? "", item_id: r.item_id, shop_id: r.shop_id,
+            event_id: r.event_id, style: r.style, aspect_ratio: r.aspect_ratio, width: dims.w, height: dims.h,
+            seed: r.seed, model: r.model, status: r.status, error: r.error, generated_at: r.generated_at,
+            imported_attachment_id: r.imported_attachment_id,
+          };
+        })
+      );
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "manifest");
+      XLSX.writeFile(wb, "marketplace-images.xlsx");
+      pushToast("ok", "marketplace-images.xlsx exported.");
+    } catch {
+      pushToast("err", "XLSX export failed.");
+    }
+  }, [pushToast]);
 
   /* ---------- batches, wizard, factory ---------- */
   const startBatch = useCallback(
@@ -863,6 +1028,11 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
                 downloadRow={downloadRow}
                 importCsv={importCsv}
                 exportCsv={exportCsv}
+                exportXlsx={exportXlsx}
+                compare={compare}
+                strikeVariant={strikeVariant}
+                keepVariant={keepVariant}
+                discardVariant={() => setCompare(null)}
                 log={log}
                 isRunning={isRunning}
                 styleLock={styleLock}
@@ -955,6 +1125,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             <BatchLibrary
               batches={batches}
               rows={rows}
+              onExport={exportBatchCsv}
               onOpen={(id) => {
                 setBatchFilter(id);
                 setView("workbench");

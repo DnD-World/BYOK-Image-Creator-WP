@@ -32,6 +32,8 @@ export interface ForgeSettings {
   cooldowns: Record<string, number>;
   usage: Record<string, { day: string; used: number }>;
   writeCsvOnSync: boolean;
+  /** automatically re-queue rows whose cooldown has elapsed */
+  autoRetry: boolean;
   metaPrompts: { promptWriter: string; filenameForger: string; stylePicker: string; wpMeta: string; factory: string };
   wp: { url: string; user: string; appPassword: string };
   ambient: {
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   cooldowns: {},
   usage: {},
   writeCsvOnSync: true,
+  autoRetry: true,
   metaPrompts: { promptWriter: "", filenameForger: "", stylePicker: "", wpMeta: "", factory: "" },
   wp: { url: "", user: "", appPassword: "" },
   ambient: {

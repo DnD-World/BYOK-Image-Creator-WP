@@ -254,6 +254,22 @@ export default function SettingsView({
                 ))}
               </div>
             </div>
+
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-line bg-panel/50 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={settings.autoRetry}
+                onChange={(e) => patchSettings({ autoRetry: e.target.checked })}
+                className="h-4 w-4 accent-[#f2a33c]"
+              />
+              <span>
+                <span className="block text-[13.5px] font-semibold text-cream">Automatic retry</span>
+                <span className="block text-[11.5px] text-dust">
+                  when a parked row's cooldown expires, the forge quietly puts it back in the queue
+                </span>
+              </span>
+              {settings.autoRetry && <ICheck size={15} className="ml-auto text-moss" />}
+            </label>
           </>
         )}
 

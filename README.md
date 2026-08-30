@@ -56,13 +56,30 @@ npm run build
 
 Keys never leave the browser except to call the image/text engines. Quota numbers drift — verify on provider pricing pages before building on a free tier.
 
-## 🪟 Desktop app (Windows `.exe`)
+## 🖥️ Desktop apps — two shells, one forge
 
-One command packages the forge into Windows executables — an installer and a portable file land in `release/`:
+The same build ships as either a desktop app. Both give the forge **native folder
+access** (pick an output folder once, images auto-save into `shops/ items/ events/ npcs/`).
+
+**Tauri** (recommended — ~5–10 MB, uses the OS webview, needs Rust):
 
 ```bash
-npm install          # once — electron + electron-builder are devDependencies
-npm run build-exe    # vite build → icon → electron-builder → release/
+npm run tauri:icons   # once — derives the icon set
+npm run tauri:build   # → installer + .msi in src-tauri/target/release/bundle/
+npm run tauri:dev     # develop with hot reload
 ```
+See **[TAURI.md](TAURI.md)**.
 
-Full walkthrough, sizes, SmartScreen notes and troubleshooting: **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.
+**Electron** (~200 MB, bundles Chromium, needs only Node):
+
+```bash
+npm run build-exe     # → installer + portable .exe in release/
+```
+See **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.
+
+## 🔁 Undo, variants, exports
+
+- Deleting a row offers a one-click **undo**.
+- **Variant** strikes a same-prompt re-roll (seed +1) and shows it side-by-side — keep or discard.
+- Export the whole manifest as **CSV or XLSX**, or a single batch as its own CSV.
+- Rows whose rate-limit **cooldown expires are re-queued automatically** (toggle in Settings).

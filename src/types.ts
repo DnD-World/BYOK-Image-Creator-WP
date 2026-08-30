@@ -46,6 +46,7 @@ export interface Toast {
   id: number;
   msg: string;
   kind: "ok" | "err" | "info";
+  action?: { label: string; run: () => void };
 }
 
 export const STATUSES: Status[] = ["pending", "generating", "done", "failed", "skipped", "imported"];
