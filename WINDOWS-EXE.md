@@ -1,4 +1,4 @@
-# 🪟 Emberfair → Windows `.exe`
+# 🪟 Image Forge → Windows `.exe`
 
 The project is fully wired for desktop packaging with **Electron + electron-builder**.
 Nothing in `package.json` was touched — the packager is installed on demand with `--no-save`.
@@ -19,16 +19,16 @@ That's it. First run downloads ~150 MB of tooling (coffee time), every run after
 
 | file | what it is |
 |---|---|
-| `Emberfair Setup 1.0.0.exe` | normal Windows installer — pick the install folder, desktop & start-menu shortcuts |
-| `Emberfair-portable.exe` | portable single file — runs from a USB stick, no install |
+| `Image Forge Setup x.y.z.exe` | normal Windows installer — pick the install folder, desktop & start-menu shortcuts |
+| `image-forge-portable.exe` | portable single file — runs from a USB stick, no install |
 
 ## What the exe actually is
 
 - The built site (`dist/`) ships inside the package and is served by a tiny embedded
   server at `http://127.0.0.1:<port>` — that also makes the browser treat the app as a
   **secure context**, so the forge's *link output folder* feature works in the desktop app.
-- Your data (purse, satchel, manifest, recipes, keys) persists in
-  `%APPDATA%\Emberfair` — the *Help → Where is my data?* menu item shows the exact path.
+- Your data (manifest, recipes, engine keys, settings) persists in
+  `%APPDATA%\Image Forge` — the *Help → Where is my data?* menu item shows the exact path.
 - Internet is still needed for Google Fonts and the AI engines (Pollinations / Imagen),
   exactly as in the browser. Everything else runs offline.
 

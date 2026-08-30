@@ -1,5 +1,5 @@
 /**
- * Emberfair desktop shell (Electron).
+ * Image Forge desktop shell (Electron).
  *
  * The built site (dist/) is served by a tiny embedded HTTP server on
  * http://localhost:<random-port>. Two reasons we don't just open the html file:
@@ -85,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
   const menu = Menu.buildFromTemplate([
     {
       label: "File",
-      submenu: [{ role: "quit", label: "Quit Emberfair" }],
+      submenu: [{ role: "quit", label: "Quit Image Forge" }],
     },
     {
       label: "Edit",
@@ -110,8 +110,8 @@ if (!app.requestSingleInstanceLock()) {
             dialog.showMessageBox({
               type: "info",
               title: "Your data",
-              message: "Purse, satchel, manifest and settings live in:",
-              detail: path.join(app.getPath("appData"), "Emberfair"),
+              message: "Your manifest, recipes, engine keys and settings live in:",
+              detail: path.join(app.getPath("appData"), "Image Forge"),
               buttons: ["OK"],
             });
           },
@@ -143,7 +143,7 @@ if (!app.requestSingleInstanceLock()) {
       minWidth: 980,
       minHeight: 640,
       backgroundColor: "#17120e",
-      title: "Emberfair",
+      title: "Image Forge",
       show: false,
       icon: fs.existsSync(iconPath) ? iconPath : undefined,
       webPreferences: {

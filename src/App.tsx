@@ -81,23 +81,14 @@ const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const nowTime = () => new Date().toLocaleTimeString("en-GB", { hour12: false });
 
 export default function App() {
-  const [mode, setMode] = useState<"market" | "forge">("market");
-  return mode === "forge" ? (
-    <div className="relative h-full">
-      <ForgeApp />
-      <button
-        onClick={() => setMode("market")}
-        className="btn-press fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full border border-ember/60 bg-coal/95 px-4 py-2.5 font-display text-[13px] tracking-wide text-ember shadow-[0_10px_30px_rgba(0,0,0,0.55)] backdrop-blur hover:bg-panel"
-      >
-        ⚜ back to the fair
-      </button>
-    </div>
-  ) : (
-    <MarketApp onOpenForge={() => setMode("forge")} />
-  );
+  const [mode, setMode] = useState<"forge" | "market">("forge");
+  if (mode === "market") {
+    return <MarketApp onOpenForge={() => setMode("forge")} />;
+  }
+  return <ForgeApp onOpenMarket={() => setMode("market")} />;
 }
 
-function ForgeApp() {
+function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [rows, setRows] = useState<ManifestRow[]>(loadInitial);
   const [view, setView] = useState<View>("workbench");
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("engines");
@@ -741,6 +732,16 @@ function ForgeApp() {
         />
 
         <div className="ml-auto flex items-center gap-2">
+          {onOpenMarket && (
+            <button
+              onClick={onOpenMarket}
+              title="Peek at the Emberfair marketplace demo"
+              className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
+            >
+              <span className="text-[13px] leading-none">⚜</span>
+              <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">fair</span>
+            </button>
+          )}
           <button
             onClick={() => setScribeId(selectedId ?? rows[0]?.id ?? null)}
             title="Summon the Scribe — AI prompt & filename writer"

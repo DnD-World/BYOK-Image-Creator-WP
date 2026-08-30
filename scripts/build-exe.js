@@ -7,8 +7,8 @@
  * 1. installs electron + electron-builder if missing (--no-save, package.json untouched)
  * 2. builds the site with vite            → dist/
  * 3. packages it                          → release/
- *       · "Emberfair Setup x.y.z.exe"  (installer, pick install folder)
- *       · "Emberfair x.y.z.exe"        (portable, runs from anywhere)
+ *       · "Image Forge Setup x.y.z.exe" (installer, pick install folder)
+ *       · "image-forge-portable.exe"    (portable, runs from anywhere)
  */
 const { spawnSync } = require("child_process");
 const fs = require("fs");
@@ -101,9 +101,9 @@ async function main() {
 
   const artifacts = await build({
     config: {
-      appId: "fair.emberfair.app",
-      productName: "Emberfair",
-      copyright: "Emberfair — forged locally",
+      appId: "forge.imageforge.app",
+      productName: "Image Forge",
+      copyright: "Image Forge — forged locally",
       asar: true,
       directories: { output: "release", buildResources: "build" },
       files: ["electron/**/*", "build/icon.png", "package.json"],
@@ -123,9 +123,9 @@ async function main() {
         allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true,
         createStartMenuShortcut: true,
-        shortcutName: "Emberfair",
+        shortcutName: "Image Forge",
       },
-      portable: { artifactName: "Emberfair-portable.exe" },
+      portable: { artifactName: "image-forge-portable.exe" },
     },
   });
 
@@ -136,7 +136,7 @@ async function main() {
   · the "portable" file runs straight from a USB stick
   · first launch may show a SmartScreen warning (unsigned app):
       More info → Run anyway
-  · your data (purse, manifest, settings) lives in %APPDATA%\\Emberfair`);
+  · your data (manifest, recipes, keys, settings) lives in %APPDATA%\\Image Forge`);
 }
 
 main().catch((e) => fail(e && e.message ? e.message : String(e)));
