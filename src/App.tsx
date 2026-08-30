@@ -120,11 +120,14 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const imagesRef = useRef<Map<string, Blob>>(new Map());
   const toastId = useRef(1);
 
-  /* ---------- persistence ---------- */
+  /* ---------- persistence (debounced — a run mutates rows many times per second) ---------- */
   useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ rows: rows.map(({ preview: _p, ...r }) => r), styleLock, appendStyle }));
-    } catch { /* storage full — non-fatal */ }
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({ rows: rows.map(({ preview: _p, ...r }) => r), styleLock, appendStyle }));
+      } catch { /* storage full — non-fatal */ }
+    }, 350);
+    return () => clearTimeout(t);
   }, [rows, styleLock, appendStyle]);
 
   useEffect(() => {
@@ -258,9 +261,14 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         return "done";
       }
 
-      const prompt = appendStyle && !row.prompt.includes(STYLES.find((x) => x.id === row.style)?.block ?? "")
-        ? `${row.prompt}, ${STYLES.find((x) => x.id === row.style)?.block ?? row.style}`
-        : row.prompt;
+      const styleBlockFor =
+        STYLES.find((x) => x.id === row.style)?.block ??
+        settingsRef.current.customStyles.find((x) => x.id === row.style)?.block ??
+        "";
+      const prompt =
+        appendStyle && styleBlockFor && !row.prompt.includes(styleBlockFor)
+          ? `${row.prompt}, ${styleBlockFor}`
+          : row.prompt;
 
       try {
         const { blob, dataUrl } = await generateReal({ ...row, prompt }, s, undefined, exhaust, cdH * 3600e3);
@@ -404,10 +412,14 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const forceRetry = useCallback(
     (id: number) => {
       patchRow(id, { retry_at: "", status: "pending", error: "" });
-      pushToast("info", "Cooldown cleared — that row will strike at once.");
+      if (isRunning) {
+        pushToast("info", "Cooldown cleared — it will run as soon as the forge finishes the current plate.");
+        return;
+      }
+      pushToast("info", "Cooldown cleared — striking at once.");
       runQueue([id]);
     },
-    [patchRow, pushToast, runQueue]
+    [isRunning, patchRow, pushToast, runQueue]
   );
 
   const markSkipped = useCallback((id: number) => patchRow(id, { status: "skipped", error: "" }), [patchRow]);
@@ -441,6 +453,20 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           pushToast("err", "Nothing importable — every row was missing a filename.");
           return;
         }
+        // duplicate filenames would overwrite each other in the output folder — uniquify
+        const names = new Set(mode === "replace" ? [] : rowsRef.current.map((r) => r.filename));
+        let renamed = 0;
+        for (const r of imported) {
+          if (names.has(r.filename)) {
+            const stem = r.filename.replace(/\.png$/, "");
+            let n = 2;
+            while (names.has(`${stem}_${n}.png`)) n++;
+            r.filename = `${stem}_${n}.png`;
+            renamed++;
+          }
+          names.add(r.filename);
+        }
+        if (renamed > 0) pushLog(`· ${renamed} duplicate filename${renamed > 1 ? "s" : ""} got a suffix to stay unique`, "info");
         setRows((prev) => (mode === "replace" ? imported.map(withPreview) : [...prev, ...imported.map(withPreview)]));
         pushLog(`⇡ manifest ${mode === "replace" ? "replaced" : "merged"} · ${imported.length} rows in, ${skipped} skipped`, "ok");
         pushToast("ok", `Imported ${imported.length} row${imported.length > 1 ? "s" : ""} (${mode}).`);

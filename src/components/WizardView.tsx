@@ -648,10 +648,7 @@ export default function WizardView({
               <IPlay size={13} /> Arrange {items.filter((i) => i.filename && i.prompt).length} pictures
             </Btn>
           )}
-          <span className="ml-auto hidden font-mono text-[10.5px] text-dust sm:block">
-            {STEPS[step].short} <IGear size={0} className="hidden" />
-            <IX size={0} className="hidden" />
-          </span>
+          <span className="ml-auto hidden font-mono text-[10.5px] text-dust sm:block">{STEPS[step].short}</span>
         </footer>
       </div>
     </div>

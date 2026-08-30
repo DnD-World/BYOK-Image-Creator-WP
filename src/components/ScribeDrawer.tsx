@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ManifestRow, Toast } from "../types";
 import { STYLES, kindById } from "../types";
 import type { ForgeSettings } from "../lib/providers";
@@ -35,6 +35,14 @@ export default function ScribeDrawer({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const allStyles = [...STYLES, ...settings.customStyles];
   const styleDef = allStyles.find((s) => s.id === row.style) ?? STYLES[0];
