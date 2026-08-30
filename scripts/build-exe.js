@@ -88,9 +88,16 @@ async function main() {
   ok("tools ready");
 
   step("building the site (vite → dist/)");
-  const viteBin = require.resolve("vite/bin/vite.js", { paths: [ROOT] });
-  const b = spawnSync(process.execPath, [viteBin, "build"], { cwd: ROOT, stdio: "inherit" });
-  if (b.status !== 0) fail("vite build failed");
+  // Vite 6 no longer exposes ./bin/vite.js through its exports map, so we run the
+  // local .bin shim through a shell instead of require.resolve-ing the file.
+  const viteBin =
+    process.platform === "win32"
+      ? path.join(ROOT, "node_modules", ".bin", "vite.cmd")
+      : path.join(ROOT, "node_modules", ".bin", "vite");
+  const b = fs.existsSync(viteBin)
+    ? spawnSync(viteBin, ["build"], { cwd: ROOT, stdio: "inherit", shell: true })
+    : spawnSync("vite", ["build"], { cwd: ROOT, stdio: "inherit", shell: true });
+  if (b.status !== 0) fail("vite build failed — scroll up for the real error");
   ok("site built");
 
   step("fetching the app icon (once)");
