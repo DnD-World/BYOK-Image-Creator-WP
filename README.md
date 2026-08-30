@@ -55,3 +55,13 @@ npm run build
 ```
 
 Keys never leave the browser except to call the image/text engines. Quota numbers drift — verify on provider pricing pages before building on a free tier.
+
+## 🪟 Desktop app (Windows `.exe`)
+
+One command packages market + forge into Windows executables — an installer and a portable file land in `release/`:
+
+```bash
+node scripts/build-exe.js
+```
+
+Electron + electron-builder install themselves on demand (`--no-save`, `package.json` untouched). Full walkthrough, sizes, SmartScreen notes and troubleshooting: **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.
