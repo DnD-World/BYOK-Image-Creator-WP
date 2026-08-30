@@ -58,10 +58,11 @@ Keys never leave the browser except to call the image/text engines. Quota number
 
 ## 🪟 Desktop app (Windows `.exe`)
 
-One command packages market + forge into Windows executables — an installer and a portable file land in `release/`:
+One command packages the forge into Windows executables — an installer and a portable file land in `release/`:
 
 ```bash
-node scripts/build-exe.js
+npm install          # once — electron + electron-builder are devDependencies
+npm run build-exe    # vite build → icon → electron-builder → release/
 ```
 
-Electron + electron-builder install themselves on demand (`--no-save`, `package.json` untouched). Full walkthrough, sizes, SmartScreen notes and troubleshooting: **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.
+Full walkthrough, sizes, SmartScreen notes and troubleshooting: **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.

@@ -1,7 +1,7 @@
 # 🪟 Image Forge → Windows `.exe`
 
-The project is fully wired for desktop packaging with **Electron + electron-builder**.
-Nothing in `package.json` was touched — the packager is installed on demand with `--no-save`.
+The project is fully wired for desktop packaging with **Electron + electron-builder**,
+both committed as `devDependencies`.
 
 ---
 
@@ -10,10 +10,12 @@ Nothing in `package.json` was touched — the packager is installed on demand wi
 On any machine with **Node 18+** and internet access:
 
 ```bash
-node scripts/build-exe.js
+npm install          # once — brings in electron + electron-builder
+npm run build-exe    # vite build → icon → electron-builder → release/
 ```
 
-That's it. First run downloads ~150 MB of tooling (coffee time), every run after is fast.
+(`node scripts/build-exe.js` runs the exact same thing.) First run downloads
+Electron's binaries (~150 MB, coffee time); every run after is fast.
 
 ## What you get — in `release/`
 
@@ -36,7 +38,7 @@ That's it. First run downloads ~150 MB of tooling (coffee time), every run after
 
 ```bash
 npm run build
-npx electron electron/main.cjs
+npx electron .          # loads electron/main.js via package.json "main"
 ```
 
 Opens the same window without building an installer — handy for a quick look.

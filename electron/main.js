@@ -1,16 +1,19 @@
 /**
- * Image Forge desktop shell (Electron).
+ * Image Forge desktop shell (Electron, ESM).
  *
  * The built site (dist/) is served by a tiny embedded HTTP server on
- * http://localhost:<random-port>. Two reasons we don't just open the html file:
+ * http://127.0.0.1:<random-port>. Two reasons we don't just open the html file:
  *   1. Vite emits absolute asset paths (/assets/...) which need a web root.
- *   2. localhost is a *secure context* — so the File System Access API
+ *   2. 127.0.0.1 is a *secure context* — so the File System Access API
  *      (link output folder) keeps working inside the desktop app.
  */
-const http = require("http");
-const path = require("path");
-const fs = require("fs");
-const { app, BrowserWindow, Menu, shell, dialog } = require("electron");
+import http from "node:http";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { app, BrowserWindow, Menu, shell, dialog } from "electron";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /* ---------------- static file server ---------------- */
 

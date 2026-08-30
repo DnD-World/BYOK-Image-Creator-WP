@@ -2,21 +2,27 @@
 /**
  * One-command Windows packaging.
  *
- *   node scripts/build-exe.js
+ *   npm run build-exe        (or: node scripts/build-exe.js)
  *
- * 1. installs electron + electron-builder if missing (--no-save, package.json untouched)
- * 2. builds the site with vite            → dist/
- * 3. packages it                          → release/
- *       · "Image Forge Setup x.y.z.exe" (installer, pick install folder)
- *       · "image-forge-portable.exe"    (portable, runs from anywhere)
+ * 1. builds the site with vite             → dist/
+ * 2. fetches the app icon (once, cached)   → build/icon.png
+ * 3. packages it with electron-builder     → release/
+ *       · "Image Forge Setup x.y.z.exe"  (installer, pick install folder)
+ *       · "image-forge-portable.exe"     (portable, runs from anywhere)
+ *
+ * electron + electron-builder are committed devDependencies — if they are
+ * missing, a plain `npm install` brings them in.
  */
-const { spawnSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import http from "node:http";
+import https from "node:https";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
-const ROOT = path.join(__dirname, "..");
-const isWin = process.platform === "win32";
-const npmCmd = isWin ? "npm.cmd" : "npm";
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
 
 const step = (msg) => console.log(`\n\x1b[38;5;215m▸ ${msg}\x1b[0m`);
 const ok = (msg) => console.log(`\x1b[38;5;114m✓ ${msg}\x1b[0m`);
@@ -25,7 +31,7 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-function has(mod) {
+function resolvable(mod) {
   try {
     require.resolve(mod, { paths: [ROOT] });
     return true;
@@ -46,7 +52,7 @@ function ensureIcon() {
       "https://image.qwenlm.ai/generated-images/498dde55-0b24-4a59-a260-33d1bbee3a0a/_result.png";
     console.log("  downloading icon…");
     const get = (u, redirects = 0) => {
-      const mod = u.startsWith("https") ? require("https") : require("http");
+      const mod = u.startsWith("https") ? https : http;
       mod
         .get(u, (res) => {
           if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location && redirects < 5) {
@@ -75,19 +81,15 @@ function ensureIcon() {
 }
 
 async function main() {
-  step("checking packaging tools (first run downloads ~150 MB — coffee time)");
-  if (!has("electron") || !has("electron-builder")) {
-    console.log("  installing electron + electron-builder (not saved to package.json)…");
-    const r = spawnSync(npmCmd, ["install", "--no-save", "electron", "electron-builder"], {
-      cwd: ROOT,
-      stdio: "inherit",
-    });
-    if (r.status !== 0) fail("could not install electron/electron-builder — check your internet connection");
+  step("checking packaging tools");
+  if (!resolvable("electron") || !resolvable("electron-builder")) {
+    fail("electron / electron-builder not found — run `npm install` once, then try again");
   }
   ok("tools ready");
 
   step("building the site (vite → dist/)");
-  const b = spawnSync(npmCmd, ["run", "build"], { cwd: ROOT, stdio: "inherit" });
+  const viteBin = require.resolve("vite/bin/vite.js", { paths: [ROOT] });
+  const b = spawnSync(process.execPath, [viteBin, "build"], { cwd: ROOT, stdio: "inherit" });
   if (b.status !== 0) fail("vite build failed");
   ok("site built");
 
@@ -95,7 +97,7 @@ async function main() {
   await ensureIcon();
 
   step("packaging the exe (this is the slow part)");
-  const { build } = require(require.resolve("electron-builder", { paths: [ROOT] }));
+  const { build } = await import("electron-builder");
   const iconFile = path.join(ROOT, "build", "icon.png");
   const hasIcon = fs.existsSync(iconFile);
 
@@ -108,9 +110,6 @@ async function main() {
       directories: { output: "release", buildResources: "build" },
       files: ["electron/**/*", "build/icon.png", "package.json"],
       extraResources: [{ from: "dist", to: "dist" }],
-      // package.json is deliberately left untouched — electron-builder gets its
-      // entry point from here instead:
-      extraMetadata: { main: "electron/main.cjs" },
       win: {
         ...(hasIcon ? { icon: "build/icon.png" } : {}),
         target: [
