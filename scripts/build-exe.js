@@ -40,7 +40,11 @@ function resolvable(mod) {
   }
 }
 
-/** Downloads the forge's emblem into build/icon.png on first run, then it's cached. */
+/**
+ * Makes sure build/icon.png exists.
+ * Priority: the Tauri emblem (src-tauri/icons/icon.png — the 1024×1024 anvil)
+ * → download fallback → default electron icon.
+ */
 function ensureIcon() {
   return new Promise((resolve) => {
     const dest = path.join(ROOT, "build", "icon.png");
@@ -48,8 +52,15 @@ function ensureIcon() {
       ok("icon already cached");
       return resolve();
     }
+    const tauriIcon = path.join(ROOT, "src-tauri", "icons", "icon.png");
+    if (fs.existsSync(tauriIcon)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(tauriIcon, dest);
+      ok("icon copied from src-tauri/icons/icon.png");
+      return resolve();
+    }
     const url =
-      "https://image.qwenlm.ai/generated-images/498dde55-0b24-4a59-a260-33d1bbee3a0a/_result.png";
+      "https://image.qwenlm.ai/generated-images/1aee720a-7125-4ae0-9f83-4cdfeed8af7c/_result.png";
     console.log("  downloading icon…");
     const get = (u, redirects = 0) => {
       const mod = u.startsWith("https") ? https : http;
@@ -130,6 +141,12 @@ async function main() {
         createDesktopShortcut: true,
         createStartMenuShortcut: true,
         shortcutName: "Image Forge",
+        runAfterFinish: true,
+        deleteAppDataOnUninstall: false,
+      },
+      extraMetadata: {
+        description: "Image Forge — standalone, manifest-driven AI image pipeline",
+        author: "Emberfair Works",
       },
       portable: { artifactName: "image-forge-portable.exe" },
     },

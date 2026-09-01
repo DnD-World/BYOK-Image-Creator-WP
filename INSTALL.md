@@ -41,26 +41,20 @@ launcher a game needs (the way some games need Steam).
 
 ## STEP 3 — Press play
 
-1. Open **File Explorer** and go inside your `image-forge` folder.
-2. Click the **address bar** at the top (where the folder path is), type `cmd`,
-   press **Enter**. A black box opens *already inside the folder*.
-3. Type this and press Enter *(downloads the parts the forge needs — one time only)*:
-   ```
-   npm install
-   ```
-   Wait a minute or two. Go get a snack. 🍿
-4. Now start the forge:
-   ```
-   npm run dev
-   ```
-5. You'll see lines of text, then a web address like **`http://localhost:5173`**.
-   Hold **Ctrl** and **click** that link (or copy-paste it into your browser).
+**The easy way:** inside the `image-forge` folder, double-click **`start-forge.bat`**.
+It downloads anything missing, starts the forge, and shows you the link.
+Hold **Ctrl** and **click** the link it prints (something like
+`http://localhost:5173`). To stop it, press **Ctrl + C** in that window.
+
+**The manual way** (if you like black boxes): open the folder, type `cmd` in the
+address bar, press Enter, then:
+```
+npm install        ← one time only (get a snack 🍿)
+npm run dev        ← every time you want to play
+```
+Then Ctrl+click the `http://localhost:5173` link.
 
 **That's it — Image Forge is running!** 🎉
-
-To stop it later: click the black box and press **Ctrl + C**.
-To run it again later: open the folder, `cmd` in the address bar, `npm run dev`.
-(You only do `npm install` once — after that it's just `npm run dev`.)
 
 ---
 
@@ -68,14 +62,23 @@ To run it again later: open the folder, `cmd` in the address bar, `npm run dev`.
 
 If you'd rather have a normal program you double-click (no black box):
 
-```
-node scripts/build-exe.js
-```
+**Double-click `make-installer.bat`** in the project folder and wait.
+*(Manual equivalent: `node scripts/build-exe.js`.)*
 
-Wait a few minutes. Then look in the **`release`** folder and double-click
-**`Image Forge Setup.exe`**. Install it like any game. It'll appear in your
-Start Menu. *(First open may show a blue "Windows protected your PC" screen —
-click **More info → Run anyway**. That's normal for apps you build yourself.)*
+It builds everything and opens the **`release`** folder, which contains:
+
+| file | what it is |
+|---|---|
+| **`Image Forge Setup 1.0.0.exe`** | a proper Windows installer — pick the install folder, creates **desktop + Start Menu shortcuts**, launches the app when it finishes, and adds a normal uninstaller |
+| **`image-forge-portable.exe`** | a single file you can run from anywhere — even a USB stick, no install |
+
+Double-click the Setup file and install it like any game. The app gets the forge's
+anvil icon, and right-click → Properties shows its name and description like a
+real program.
+
+> ⚠️ The first time you open it, Windows may show a blue *"Windows protected your
+> PC"* screen. That's normal for apps you build yourself (they aren't
+> code-signed). Click **More info → Run anyway**.
 
 ---
 
@@ -135,7 +138,7 @@ working directory = your project folder. Any MCP client works the same way.
 | `npm install` fails | Check your internet; run it again. |
 | `port 5173 already in use` | Another forge is still running. Close its black box, or restart your PC. |
 | Page is blank | Run `npm run build` once, then `npm run dev` again. |
-| Build-exe fails | Make sure you ran `npm install` first. |
+| `make-installer.bat` fails | It downloads everything it needs by itself — if it still fails, check your internet, close the window and double-click it again. |
 
 ---
 

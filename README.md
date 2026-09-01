@@ -75,6 +75,8 @@ See **[TAURI.md](TAURI.md)**.
 ```bash
 npm run build-exe     # → installer + portable .exe in release/
 ```
+or just double-click **`make-installer.bat`** — it installs parts, builds, and
+opens `release/` (NSIS installer with shortcuts + auto-launch, plus a portable exe).
 See **[WINDOWS-EXE.md](WINDOWS-EXE.md)**.
 
 ## 🔁 Undo, variants, exports
