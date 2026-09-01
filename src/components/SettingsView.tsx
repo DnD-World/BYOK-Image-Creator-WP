@@ -6,9 +6,18 @@ import { MODELS, PROVIDER_META, formatCountdown, newKey, usedToday, scribeChat, 
 import { SUBFOLDERS, fsSupported } from "../lib/output";
 import type { FolderState } from "./SettingsDrawer";
 import { BorderGlow } from "./effects";
-import { Btn, IAlert, ICheck, IFolder, ITrash, IX } from "./ui";
+import { Btn, IAlert, ICheck, IDownload, IFolder, IRetry, ISparkle, ITrash, IX } from "./ui";
 
-export type SettingsSection = "engines" | "styles" | "text" | "prompts" | "filenames" | "folders" | "wp" | "appearance";
+export type SettingsSection =
+  | "engines"
+  | "styles"
+  | "text"
+  | "prompts"
+  | "filenames"
+  | "folders"
+  | "wp"
+  | "appearance"
+  | "advanced";
 
 const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
   { id: "engines", label: "Image engines", hint: "who paints" },
@@ -19,6 +28,7 @@ const SECTIONS: { id: SettingsSection; label: string; hint: string }[] = [
   { id: "folders", label: "Folders", hint: "where files go" },
   { id: "wp", label: "WP connections", hint: "the hand-off" },
   { id: "appearance", label: "Appearance", hint: "the vibe" },
+  { id: "advanced", label: "Advanced", hint: "care & updates" },
 ];
 
 const H = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
@@ -112,6 +122,12 @@ export default function SettingsView({
   onUnlinkFolder,
   onSyncAll,
   onGoStyles,
+  onRepair,
+  onBackup,
+  onReset,
+  onPullManifest,
+  onCheckUpdate,
+  appVersion,
   pushToast,
 }: {
   section: SettingsSection;
@@ -123,10 +139,22 @@ export default function SettingsView({
   onUnlinkFolder: () => void;
   onSyncAll: () => void;
   onGoStyles: () => void;
+  onRepair: () => void;
+  onBackup: () => void;
+  onReset: (c: { rows: boolean; recipes: boolean; settings: boolean; market: boolean }) => void;
+  onPullManifest: (mode: "merge" | "replace") => void;
+  onCheckUpdate: () => void;
+  appVersion: string;
   pushToast: (kind: Toast["kind"], msg: string) => void;
 }) {
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState("");
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [pullBusy, setPullBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [pullMode, setPullMode] = useState<"merge" | "replace">("merge");
+  const [resetChecks, setResetChecks] = useState({ rows: false, recipes: false, settings: false, market: false });
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const testText = async () => {
     setTestBusy(true);
@@ -600,6 +628,195 @@ export default function SettingsView({
               </div>
             )}
             <P>All animation honors your system's “reduce motion” setting automatically.</P>
+          </>
+        )}
+
+        {section === "advanced" && (
+          <>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <H>Advanced</H>
+                <P className="mt-1">Care, recovery and updates for the forge itself.</P>
+              </div>
+              <span className="shrink-0 rounded-lg border border-line bg-panel/60 px-3 py-1.5 font-mono text-[11px] text-parch">
+                v{appVersion}
+              </span>
+            </div>
+
+            {/* repair */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Repair</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+                If the forge is acting strange, this fixes the usual suspects in one pass: rows stuck mid-strike go back
+                to <span className="font-mono text-parch">pending</span>, duplicate filenames get a suffix, the
+                shops/items/events/npcs structure in your linked folder is re-created, and a fresh CSV is written there.
+              </p>
+              <Btn
+                variant="primary"
+                className="mt-3"
+                disabled={repairBusy}
+                onClick={async () => {
+                  setRepairBusy(true);
+                  try {
+                    await onRepair();
+                  } finally {
+                    setRepairBusy(false);
+                  }
+                }}
+              >
+                <IRetry size={13} /> {repairBusy ? "Repairing…" : "Run repair"}
+              </Btn>
+            </div>
+
+            {/* update from github */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Sync &amp; update from GitHub</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+                Point the forge at its repository. Then you can pull the manifest straight from the repo (great when an
+                agent or a teammate edits the CSV there), and check whether a newer installer has been published.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">repo owner</label>
+                  <input value={settings.github.owner} onChange={(e) => patchSettings({ github: { ...settings.github, owner: e.target.value } })} placeholder="your-github-name" className={`${field} font-mono !text-[12px]`} />
+                </div>
+                <div>
+                  <label className="mb-1 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">repo name</label>
+                  <input value={settings.github.repo} onChange={(e) => patchSettings({ github: { ...settings.github, repo: e.target.value } })} placeholder="image-forge" className={`${field} font-mono !text-[12px]`} />
+                </div>
+                <div>
+                  <label className="mb-1 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">branch</label>
+                  <input value={settings.github.branch} onChange={(e) => patchSettings({ github: { ...settings.github, branch: e.target.value } })} placeholder="main" className={`${field} font-mono !text-[12px]`} />
+                </div>
+                <div>
+                  <label className="mb-1 block font-mono text-[9.5px] tracking-[0.2em] text-dust uppercase">manifest path in repo</label>
+                  <input value={settings.github.csvPath} onChange={(e) => patchSettings({ github: { ...settings.github, csvPath: e.target.value } })} placeholder="marketplace-images.csv" className={`${field} font-mono !text-[12px]`} />
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="flex overflow-hidden rounded-lg border border-line">
+                  {(["merge", "replace"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPullMode(m)}
+                      className={`btn-press px-3 py-2 font-mono text-[10.5px] uppercase ${pullMode === m ? "bg-ember/15 text-ember" : "text-dust hover:text-cream"}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                <Btn
+                  onClick={async () => {
+                    setPullBusy(true);
+                    try {
+                      await onPullManifest(pullMode);
+                    } finally {
+                      setPullBusy(false);
+                    }
+                  }}
+                  disabled={pullBusy}
+                >
+                  <IDownload size={13} /> {pullBusy ? "Pulling…" : "Pull manifest"}
+                </Btn>
+                <Btn
+                  variant="moss"
+                  onClick={async () => {
+                    setUpdateBusy(true);
+                    try {
+                      await onCheckUpdate();
+                    } finally {
+                      setUpdateBusy(false);
+                    }
+                  }}
+                  disabled={updateBusy}
+                >
+                  <ISparkle size={13} /> {updateBusy ? "Checking…" : "Check for app update"}
+                </Btn>
+              </div>
+              <p className="mt-2 text-[11px] text-dust">
+                Pull reads <span className="font-mono text-parch">raw.githubusercontent.com</span> — the repo must be public (or use a gist).
+                The update check reads the repo's latest release and downloads its <span className="font-mono text-parch">Setup.exe</span> if it's newer.
+              </p>
+            </div>
+
+            {/* reset */}
+            <div className="rounded-xl border border-blood/25 bg-blood/4 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Reset — start from a clean slate</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+                Wipes local app data <em>only</em> — images already written to your folders on disk are never touched.
+                Tick exactly what should go, then confirm twice.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    { key: "rows", label: "Manifest & generated previews", desc: "every row, status, cooldown and note" },
+                    { key: "recipes", label: "Recipes & previous batches", desc: "saved wizard setups and batch history" },
+                    { key: "settings", label: "Settings, styles & API keys", desc: "engines, keys, cooldowns, appearance" },
+                    { key: "market", label: "Marketplace progress", desc: "Emberfair purse, satchel, standing" },
+                  ] as const
+                ).map((o) => (
+                  <label key={o.key} className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={resetChecks[o.key]}
+                      onChange={(e) => {
+                        setResetChecks((c) => ({ ...c, [o.key]: e.target.checked }));
+                        setConfirmReset(false);
+                      }}
+                      className="mt-0.5 accent-[#e2593f]"
+                    />
+                    <span>
+                      <span className="block text-[12.5px] font-semibold text-parch">{o.label}</span>
+                      <span className="block text-[10.5px] text-dust">{o.desc}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Btn onClick={onBackup}>
+                  <IDownload size={13} /> Download backup first
+                </Btn>
+                <Btn
+                  variant="danger"
+                  disabled={!resetChecks.rows && !resetChecks.recipes && !resetChecks.settings && !resetChecks.market}
+                  onClick={() => {
+                    if (!confirmReset) {
+                      setConfirmReset(true);
+                      pushToast("info", "One more click to really erase — this cannot be undone.");
+                      return;
+                    }
+                    onReset(resetChecks);
+                  }}
+                >
+                  <ITrash size={13} /> {confirmReset ? "Click again — erase for real" : "Reset the checked things"}
+                </Btn>
+              </div>
+            </div>
+
+            {/* uninstall */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Uninstall the desktop app</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+                The installer registered a proper Windows uninstaller. Use the Start Menu entry or Windows Settings —
+                on the way out it asks whether to also remove your forge data from{" "}
+                <span className="font-mono text-parch">%APPDATA%\Image Forge</span>. Say no if you plan to reinstall;
+                your data survives either way until you opt in.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <a
+                  href="ms-settings:appsfeatures"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-press inline-flex items-center gap-2 rounded-lg border border-line bg-panel2/70 px-3.5 py-2 text-[13px] font-semibold text-cream hover:border-line2"
+                >
+                  <IFolder size={14} /> Open Windows “Installed apps”
+                </a>
+                <span className="font-mono text-[10.5px] text-dust">…then find “Image Forge” → Uninstall</span>
+              </div>
+              <p className="mt-2.5 text-[11px] text-dust">
+                Prefer to keep the app but lose the data? The reset above does exactly that without uninstalling anything.
+              </p>
+            </div>
           </>
         )}
       </div>

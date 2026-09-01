@@ -82,6 +82,50 @@ real program.
 
 ---
 
+## 🧹 Uninstalling, repairing, resetting & updating
+
+### Uninstall (removes the app, keeps your stuff by default)
+1. Open **Windows Settings → Apps → Installed apps** — there's a shortcut button
+   for this in the app: **Settings → Advanced → "Open Windows Installed apps"**.
+2. Find **Image Forge** → **Uninstall**.
+3. The uninstaller asks one question: *"Remove your Image Forge data as well?"*
+   - **No** → only the app goes; your manifest, recipes, keys and marketplace
+     progress stay in `%APPDATA%\Image Forge`, ready for a reinstall.
+   - **Yes** → that data goes too.
+4. Images you generated on disk (your linked folder, ZIPs) are **never** touched
+   by uninstalling.
+
+### Repair (the app feels broken)
+In the app: **Settings → Advanced → Run repair**. One click:
+- puts rows stuck on *generating* back to *pending*,
+- de-duplicates any colliding filenames,
+- re-creates `shops/ items/ events/ npcs/` in your linked folder,
+- rewrites a fresh `marketplace-images.csv` there.
+
+### Reset (keep the app, lose the data)
+**Settings → Advanced → Reset** — tick exactly which stores to wipe (manifest,
+recipes/batches, settings+keys, marketplace progress). Always
+**"Download backup first"** — it saves everything as one JSON file.
+Reset asks for confirmation twice before erasing anything.
+
+### Update from GitHub (no reinstall needed)
+**Settings → Advanced → Sync & update from GitHub**:
+- enter your repo's **owner / name / branch**,
+- **Pull manifest** fetches `marketplace-images.csv` straight from the repo
+  (merge it in, or replace your current one) — perfect when an agent or a
+  teammate edits the CSV on GitHub,
+- **Check for app update** looks at the repo's latest release; if it's newer
+  than the version you run, it downloads the fresh `Setup.exe` — run it and
+  you're updated, data intact.
+
+To make releases discoverable, publish one on GitHub:
+```
+git tag v1.1.0 && git push --tags
+# then GitHub → Releases → "Draft a new release" → attach the Setup .exe
+```
+
+---
+
 ## 🤖 Let Claude Code / Hermes / other agents use it (the "API")
 
 Yes — there's an API. It's an **MCP server**, which is the standard way AI agents

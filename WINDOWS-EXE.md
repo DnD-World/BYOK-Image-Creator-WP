@@ -51,6 +51,23 @@ Opens the same window without building an installer — handy for a quick look.
 - Expected install size is ~180–220 MB — that's Chromium inside; unavoidable with Electron.
   If that matters, the portable file is the same size but needs no installation.
 
+## Uninstall behaviour
+
+The NSIS installer (configured in `scripts/build-exe.js`, extended by
+`build/installer.nsh`) registers a proper Windows uninstaller:
+
+- **Uninstall via** Start Menu → Image Forge → Uninstall, or *Settings → Apps →
+  Installed apps* (the app links there directly from *Settings → Advanced*).
+- Shortcuts, Start Menu entries and registry keys are removed automatically.
+- **Data is kept by default** (`deleteAppDataOnUninstall: false`). The custom
+  step in `installer.nsh` shows a yes/no box: *"Remove your Image Forge data as
+  well?"* — No keeps `%APPDATA%\Image Forge` (manifest, recipes, keys), Yes
+  deletes it.
+- Generated images on disk are never touched, either way.
+- The app itself offers **Repair / Reset / Pull-from-GitHub / Check-for-update**
+  under *Settings → Advanced*, so most "reinstall to fix it" situations never
+  need an actual reinstall.
+
 ## Troubleshooting
 
 | symptom | fix |

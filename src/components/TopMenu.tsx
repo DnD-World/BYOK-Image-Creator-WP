@@ -23,7 +23,8 @@ export type SettingsSection =
   | "filenames"
   | "folders"
   | "wp"
-  | "appearance";
+  | "appearance"
+  | "advanced";
 
 function Dropdown({
   label,
@@ -268,6 +269,7 @@ export default function TopMenu({
             <Item onClick={() => { onNav("settings", "folders"); close(); }} icon={<IFolder size={15} />} title="Folders" hint="where images land on disk" />
             <Item onClick={() => { onNav("settings", "wp"); close(); }} icon={<IUpload size={15} />} title="WP connections" />
             <Item onClick={() => { onNav("settings", "appearance"); close(); }} icon={<IGear size={15} />} title="Appearance" />
+            <Item onClick={() => { onNav("settings", "advanced"); close(); }} icon={<ISparkle size={15} />} title="Advanced" hint="repair · reset · update" />
           </>
         )}
       </Dropdown>

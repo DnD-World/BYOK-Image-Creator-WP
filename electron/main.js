@@ -158,9 +158,9 @@ if (!app.requestSingleInstanceLock()) {
 
     mainWindow.once("ready-to-show", () => mainWindow.show());
 
-    // external links open in the real browser, never inside the app
+    // external links open in the real browser, Windows deep-links open in the OS
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      if (url.startsWith("http")) shell.openExternal(url);
+      if (url.startsWith("http") || url.startsWith("ms-settings:")) shell.openExternal(url);
       return { action: "deny" };
     });
     mainWindow.webContents.on("will-navigate", (e, url) => {

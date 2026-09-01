@@ -142,7 +142,11 @@ async function main() {
         createStartMenuShortcut: true,
         shortcutName: "Image Forge",
         runAfterFinish: true,
+        // data in %APPDATA%\Image Forge survives uninstall by default;
+        // build/installer.nsh adds an explicit "also delete my data?" question
         deleteAppDataOnUninstall: false,
+        uninstallDisplayName: "Image Forge",
+        include: "installer.nsh",
       },
       extraMetadata: {
         description: "Image Forge — standalone, manifest-driven AI image pipeline",

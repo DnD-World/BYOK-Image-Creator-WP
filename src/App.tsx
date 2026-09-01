@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Category, LogEntry, ManifestRow, Status, Toast } from "./types";
 import { ASPECTS, STYLES, accentHex } from "./types";
+import { APP_VERSION } from "./lib/version";
 import { SEED_ROWS } from "./lib/seed";
 import { downloadCsv, parseCsv, rowsFromCsv, rowsToCsv } from "./lib/csv";
 import { renderPreview } from "./lib/preview";
@@ -743,6 +744,136 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     }
   }, [pushToast]);
 
+  /* ---------- advanced: repair / backup / reset / github ---------- */
+  const repairForge = useCallback(async () => {
+    const fixes: string[] = [];
+    const stuck = rowsRef.current.filter((r) => r.status === "generating").length;
+    if (stuck) fixes.push(`${stuck} stuck row${stuck > 1 ? "s" : ""} back to pending`);
+    const seen = new Set<string>();
+    const repaired = rowsRef.current.map((r) => {
+      let out = r.status === "generating" ? { ...r, status: "pending" as Status } : r;
+      if (seen.has(out.filename)) {
+        const stem = out.filename.replace(/\.png$/, "");
+        let n = 2;
+        while (seen.has(`${stem}_${n}.png`)) n++;
+        fixes.push(`renamed ${r.filename} → ${stem}_${n}.png`);
+        out = { ...out, filename: `${stem}_${n}.png` };
+      }
+      seen.add(out.filename);
+      return out;
+    });
+    setRows(repaired);
+    let folderOk = false;
+    const tRoot = tauriFolderRef.current;
+    if (isTauri() && tRoot) {
+      try {
+        await tauriWriteText(tRoot, "marketplace-images.csv", rowsToCsv(repaired));
+        folderOk = true;
+      } catch { /* reported below */ }
+    } else if (folderRef.current) {
+      try {
+        await ensureSubfolders(folderRef.current);
+        await writeTextFile(folderRef.current, "marketplace-images.csv", rowsToCsv(repaired));
+        folderOk = true;
+        fixes.push("folder structure re-checked · CSV rewritten");
+      } catch { /* reported below */ }
+    }
+    if (tRoot && folderOk && fixes.every((f) => !f.includes("CSV"))) fixes.push("CSV rewritten into the linked folder");
+    pushLog(`🛠 repair run · ${fixes.length ? fixes.join(" · ") : "everything checked, nothing needed fixing"}`, "ok");
+    pushToast(
+      fixes.length ? "ok" : "info",
+      fixes.length ? `Repair done — ${fixes.length} fix${fixes.length > 1 ? "es" : ""} applied.` : "Repair checked everything — the forge is healthy."
+    );
+  }, [pushLog, pushToast]);
+
+  const backupAll = useCallback(() => {
+    const keys = [LS_KEY, LS_SETTINGS, "image-forge-setups-v1", "image-forge-batches-v1", "emberfair-v1"];
+    const dump: Record<string, unknown> = { exportedAt: new Date().toISOString(), version: APP_VERSION };
+    for (const k of keys) {
+      const v = localStorage.getItem(k);
+      if (v) {
+        try {
+          dump[k] = JSON.parse(v);
+        } catch {
+          dump[k] = v;
+        }
+      }
+    }
+    downloadBlob(`image-forge-backup-${new Date().toISOString().slice(0, 10)}.json`, new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" }));
+    pushToast("ok", "Backup downloaded — keep it somewhere safe before resetting.");
+  }, [pushToast]);
+
+  const resetForge = useCallback(
+    (c: { rows: boolean; recipes: boolean; settings: boolean; market: boolean }) => {
+      if (c.rows) localStorage.removeItem(LS_KEY);
+      if (c.recipes) {
+        localStorage.removeItem("image-forge-setups-v1");
+        localStorage.removeItem("image-forge-batches-v1");
+      }
+      if (c.settings) localStorage.removeItem(LS_SETTINGS);
+      if (c.market) localStorage.removeItem("emberfair-v1");
+      imagesRef.current.clear();
+      pushToast("info", "Wiped the checked stores — reloading with a clean slate…");
+      setTimeout(() => window.location.reload(), 600);
+    },
+    [pushToast]
+  );
+
+  const pullManifest = useCallback(
+    async (mode: "merge" | "replace") => {
+      const g = settingsRef.current.github;
+      if (!g.owner.trim() || !g.repo.trim()) {
+        pushToast("err", "Set the repo owner and name first — they're right above the button.");
+        return;
+      }
+      const url = `https://raw.githubusercontent.com/${g.owner.trim()}/${g.repo.trim()}/${(g.branch || "main").trim()}/${(g.csvPath || "marketplace-images.csv").trim().replace(/^\//, "")}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`GitHub said ${res.status} — is the repo public and the path correct?`);
+        importCsv(await res.text(), mode, false);
+        pushLog(`⇣ manifest pulled from ${g.owner}/${g.repo} (${mode})`, "ok");
+      } catch (e) {
+        pushToast("err", `Pull failed — ${(e as { message?: string })?.message ?? "network trouble"}`);
+      }
+    },
+    [importCsv, pushLog, pushToast]
+  );
+
+  const checkForUpdate = useCallback(async () => {
+    const g = settingsRef.current.github;
+    if (!g.owner.trim() || !g.repo.trim()) {
+      pushToast("err", "Set the repo owner and name first.");
+      return;
+    }
+    pushToast("info", `Checking GitHub for something newer than v${APP_VERSION}…`);
+    try {
+      const res = await fetch(`https://api.github.com/repos/${g.owner.trim()}/${g.repo.trim()}/releases/latest`);
+      if (res.status === 404) {
+        pushToast("info", "No releases published yet — tag one (git tag v1.1.0 && git push --tags) and this check will find it.");
+        return;
+      }
+      if (!res.ok) throw new Error(`GitHub said ${res.status}`);
+      const rel = (await res.json()) as { tag_name: string; assets?: { name: string; browser_download_url: string }[] };
+      const latest = (rel.tag_name || "").replace(/^v/, "");
+      if (!latest || latest === APP_VERSION) {
+        pushToast("ok", `You're on the newest version (v${APP_VERSION}). The forge is current.`);
+        return;
+      }
+      const asset = (rel.assets ?? []).find((a) => /setup.*\.exe$/i.test(a.name));
+      if (asset) {
+        pushToast("info", `v${latest} found — downloading “${asset.name}”…`);
+        const r2 = await fetch(asset.browser_download_url);
+        if (!r2.ok) throw new Error(`asset download said ${r2.status}`);
+        downloadBlob(asset.name, await r2.blob());
+        pushToast("ok", `Installer for v${latest} downloaded — run it to update. Your data is untouched.`);
+      } else {
+        pushToast("info", `v${latest} exists but has no Setup.exe asset — update with git pull + make-installer.bat instead.`);
+      }
+    } catch (e) {
+      pushToast("err", `Update check failed — ${(e as { message?: string })?.message ?? "network trouble"}`);
+    }
+  }, [pushToast]);
+
   /* ---------- batches, wizard, factory ---------- */
   const startBatch = useCallback(
     (setup: BatchSetup, items: FactoryItem[], saveTemplateAs: string | null) => {
@@ -1155,6 +1286,12 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               onUnlinkFolder={unlinkFolder}
               onSyncAll={syncAllToFolder}
               onGoStyles={() => nav("lib-styles")}
+              onRepair={repairForge}
+              onBackup={backupAll}
+              onReset={resetForge}
+              onPullManifest={pullManifest}
+              onCheckUpdate={checkForUpdate}
+              appVersion={APP_VERSION}
               pushToast={pushToast}
             />
           </main>

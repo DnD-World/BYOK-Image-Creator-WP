@@ -34,6 +34,8 @@ export interface ForgeSettings {
   writeCsvOnSync: boolean;
   /** automatically re-queue rows whose cooldown has elapsed */
   autoRetry: boolean;
+  /** GitHub repo used by Settings → Advanced (pull manifest / check for app updates) */
+  github: { owner: string; repo: string; branch: string; csvPath: string };
   metaPrompts: { promptWriter: string; filenameForger: string; stylePicker: string; wpMeta: string; factory: string };
   wp: { url: string; user: string; appPassword: string };
   ambient: {
@@ -61,6 +63,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   usage: {},
   writeCsvOnSync: true,
   autoRetry: true,
+  github: { owner: "", repo: "image-forge", branch: "main", csvPath: "marketplace-images.csv" },
   metaPrompts: { promptWriter: "", filenameForger: "", stylePicker: "", wpMeta: "", factory: "" },
   wp: { url: "", user: "", appPassword: "" },
   ambient: {
@@ -82,6 +85,7 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     ...s,
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
+    github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },
     wp: { ...DEFAULT_SETTINGS.wp, ...(s.wp ?? {}) },
     ambient: (() => {
       const a = (s.ambient ?? {}) as Partial<ForgeSettings["ambient"]> & { dots?: boolean; glow?: boolean };
