@@ -79,6 +79,7 @@ import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
 import UpdateReadyDialog from "./components/UpdateReadyDialog";
 import ChatView from "./components/ChatView";
+import { CardPanel } from "./components/nav";
 import { filenameFor, type ChatPlan } from "./lib/chatPlan";
 import { CountUp, type MotionLevel } from "./components/motion";
 import Letterer from "./components/Letterer";
@@ -160,6 +161,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [textFor, setTextFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [vectorOpen, setVectorOpen] = useState(false);
+  const [animateOpen, setAnimateOpen] = useState(false);
   const [paidAsk, setPaidAsk] = useState<null | { check: PaidRunCheck; targets: number[] }>(null);
 
   const rowsRef = useRef(rows);
@@ -1445,22 +1447,57 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             <IQuill size={14} />
             <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">scribe</span>
           </button>
-          <button
-            onClick={() => setSheetOpen(true)}
-            title="Make a sheet — walk cycles, turnarounds, mouth shapes for an avatar"
-            className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
-          >
-            <span className="text-[13px] leading-none">▦</span>
-            <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">sheet</span>
-          </button>
-          <button
-            onClick={() => setVectorOpen(true)}
-            title="Make a vector — icons, illustrations and animated icons, written as code"
-            className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
-          >
-            <span className="text-[13px] leading-none">◆</span>
-            <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">vector</span>
-          </button>
+          {/* Everything that moves, behind one door. Sheets, vectors, Lottie
+              and GIFs were four separate ideas in the UI and one idea to a
+              person: making something animate. */}
+          <div className="relative">
+            <button
+              onClick={() => setAnimateOpen((o) => !o)}
+              title="Animated characters, animated graphics, and motion from a still"
+              className={`btn-press flex items-center gap-1.5 rounded-lg border px-2.5 py-2 ${
+                animateOpen ? "border-potion/60 bg-potion/15 text-potion" : "border-line bg-panel/70 text-parch hover:border-potion/50 hover:text-potion"
+              }`}
+            >
+              <span className="text-[13px] leading-none">◈</span>
+              <span className="hidden text-[12px] lg:inline">Animate</span>
+            </button>
+            {animateOpen && (
+              <CardPanel
+                level={motionLevel}
+                onClose={() => setAnimateOpen(false)}
+                cards={[
+                  {
+                    id: "character",
+                    title: "Animated character",
+                    hint: "walk cycles, turnarounds, expressions, and a talking head with mouth shapes, blinks and brows",
+                    icon: <span className="text-[13px] leading-none">☺</span>,
+                    onPick: () => setSheetOpen(true),
+                  },
+                  {
+                    id: "graphics",
+                    title: "Animated graphics",
+                    hint: "SVG icons and illustrations, and Lottie JSON that plays in a web page",
+                    icon: <span className="text-[13px] leading-none">◆</span>,
+                    onPick: () => setVectorOpen(true),
+                  },
+                  {
+                    id: "gif",
+                    title: "Motion from a picture",
+                    hint: "turn any finished picture into a GIF — free, no second generation",
+                    icon: <span className="text-[13px] leading-none">▶</span>,
+                    onPick: () => {
+                      const done = rowsRef.current.find((r) => r.status === "done");
+                      if (!done) {
+                        pushToast("info", "Make a picture first — then any finished row can become a GIF.");
+                        return;
+                      }
+                      openGifMaker(done);
+                    },
+                  },
+                ]}
+              />
+            )}
+          </div>
           <button
             onClick={() => (folder.linked ? syncAllToFolder() : linkFolder())}
             title={folder.linked ? `Sync all plates to ${folder.name}` : "Link an output folder"}

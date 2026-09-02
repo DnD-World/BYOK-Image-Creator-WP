@@ -17,7 +17,7 @@
  * flux.2-klein-4b — the same scene came back with only the asked-for change.
  */
 
-export type SheetKind = "sprite-walk" | "sprite-actions" | "turnaround" | "visemes" | "expressions";
+export type SheetKind = "sprite-walk" | "sprite-actions" | "turnaround" | "visemes" | "expressions" | "avatar-eyes" | "avatar-brows";
 
 export interface SheetFrame {
   /** short name, used for the file and the label under the frame */
@@ -39,6 +39,36 @@ export interface SheetDef {
   common: string;
   negative: string;
 }
+
+/*
+ * What a talking head needs BEYOND the mouth.
+ *
+ * Ten visemes make a mouth move; they do not make a face look alive. Two
+ * things do most of that work, and both are cheap:
+ *
+ *   · blinking. A face that never blinks reads as dead or menacing within a
+ *     couple of seconds. People blink every few seconds, and a blink is three
+ *     drawings, not one — open, half, shut — because cutting straight from
+ *     open to shut reads as a glitch.
+ *   · brows. They carry the tone of a sentence while the mouth is busy
+ *     carrying the words, which is why a face with a fixed brow looks like it
+ *     is reciting rather than speaking.
+ *
+ * Kept as separate sheets rather than multiplied into the visemes: ten mouths
+ * times three eyes times three brows is ninety pictures, and the video tool
+ * composites them anyway.
+ */
+const AVATAR_EYES: SheetFrame[] = [
+  { id: "eyes_open", direction: "eyes fully open, natural relaxed gaze straight ahead", label: "open" },
+  { id: "eyes_half", direction: "eyelids half lowered, mid-blink, pupils still visible", label: "half" },
+  { id: "eyes_shut", direction: "eyes fully closed, lids relaxed, lashes down", label: "shut" },
+];
+
+const AVATAR_BROWS: SheetFrame[] = [
+  { id: "brow_neutral", direction: "eyebrows in a neutral resting position", label: "neutral" },
+  { id: "brow_raised", direction: "both eyebrows raised, an open and interested look", label: "raised" },
+  { id: "brow_furrowed", direction: "eyebrows drawn down and together, concentrating", label: "furrowed" },
+];
 
 /* The classic ten mouth shapes animators use. Grouping sounds that look the
    same is the whole trick — "b", "m" and "p" are one drawing, not three. */
@@ -145,6 +175,24 @@ export const SHEET_DEFS: SheetDef[] = [
     negative: SHEET_NEGATIVE,
   },
   {
+    kind: "avatar-eyes",
+    label: "Avatar · eyes",
+    blurb: "Three eye states so the face can blink. Without these a talking avatar stares, which reads as dead within seconds.",
+    columns: 3,
+    frames: AVATAR_EYES,
+    common: FACE_COMMON,
+    negative: SHEET_NEGATIVE,
+  },
+  {
+    kind: "avatar-brows",
+    label: "Avatar · brows",
+    blurb: "Three brow positions. The mouth carries the words; the brows carry the tone.",
+    columns: 3,
+    frames: AVATAR_BROWS,
+    common: FACE_COMMON,
+    negative: SHEET_NEGATIVE,
+  },
+  {
     kind: "expressions",
     label: "Expressions",
     blurb: "Six faces — neutral, happy, sad, angry, surprised, afraid.",
@@ -166,6 +214,8 @@ const CHANGE_ONLY: Record<SheetKind, string> = {
   turnaround: "which way the character is facing",
   visemes: "the shape of the mouth",
   expressions: "the expression on the face",
+  "avatar-eyes": "how far the eyelids are lowered — the mouth must not move",
+  "avatar-brows": "the position of the eyebrows — the mouth and eyes must not move",
 };
 
 /**
@@ -294,6 +344,11 @@ export function stripFor(def: SheetDef): FrameStrip {
       return { order: ids, frameMs: 260, pingPong: false, label: "every mouth shape in turn" };
     case "expressions":
       return { order: ids, frameMs: 500, pingPong: true, label: "each expression in turn" };
+    case "avatar-eyes":
+      // Out and back: that IS a blink, so the preview shows the real thing.
+      return { order: ids, frameMs: 70, pingPong: true, label: "a blink" };
+    case "avatar-brows":
+      return { order: ids, frameMs: 600, pingPong: true, label: "each brow position" };
     default:
       return { order: ids, frameMs: 140, pingPong: false, label: "each frame in turn" };
   }
@@ -330,4 +385,103 @@ export function visemesForText(text: string, msPerShape = 90): FrameStrip {
 
   if (!order.length) order.push("rest");
   return { order, frameMs: msPerShape, pingPong: false, label: `saying "${text.slice(0, 40)}"` };
+}
+
+/* ---------------- a track a video tool can actually play ---------------- */
+
+/**
+ * Everything a talking-head shot needs, on one timeline.
+ *
+ * `visemesForText` gives mouth shapes and nothing else. A video built from
+ * only that looks wrong in a way people notice but cannot name: the face never
+ * blinks. This adds the two layers that fix it, on their own schedules, so a
+ * renderer can composite mouth + eyes + brows per frame.
+ *
+ * The blink timing is not invented. Resting adults blink roughly every 2–8
+ * seconds and a blink lasts about a tenth to a fifth of a second, so blinks are
+ * scattered in that window rather than placed on a metronome — a perfectly
+ * regular blink is its own kind of uncanny.
+ */
+export interface AvatarCue<T extends string = string> {
+  /** milliseconds from the start */
+  at: number;
+  /** how long to hold it */
+  ms: number;
+  /** the frame id to show */
+  frame: T;
+}
+
+export interface AvatarTrack {
+  /** total length in milliseconds */
+  durationMs: number;
+  mouth: AvatarCue[];
+  eyes: AvatarCue[];
+  brows: AvatarCue[];
+  /** the line being spoken, for reference */
+  line: string;
+}
+
+/** Deterministic jitter, so the same line always produces the same take. */
+function wobble(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(t ^ (t >>> 15), 1 | t);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function avatarTrackForText(
+  text: string,
+  opts: { msPerShape?: number; seed?: number; brow?: "neutral" | "lively" } = {}
+): AvatarTrack {
+  const msPerShape = opts.msPerShape ?? 90;
+  const rnd = wobble(opts.seed ?? 1);
+
+  const strip = visemesForText(text, msPerShape);
+  const mouth: AvatarCue[] = strip.order.map((frame, i) => ({ at: i * msPerShape, ms: msPerShape, frame }));
+  const durationMs = Math.max(msPerShape, strip.order.length * msPerShape);
+
+  // Blinks: open by default, with a three-frame shut-and-open where they land.
+  const eyes: AvatarCue[] = [];
+  const BLINK_HALF = 40;
+  const BLINK_SHUT = 60;
+  let at = 900 + rnd() * 1500; // not immediately — a blink on frame one looks like a flinch
+  while (at + BLINK_HALF * 2 + BLINK_SHUT < durationMs) {
+    eyes.push({ at, ms: BLINK_HALF, frame: "eyes_half" });
+    eyes.push({ at: at + BLINK_HALF, ms: BLINK_SHUT, frame: "eyes_shut" });
+    eyes.push({ at: at + BLINK_HALF + BLINK_SHUT, ms: BLINK_HALF, frame: "eyes_half" });
+    at += 2000 + rnd() * 6000;
+  }
+
+  // Brows: one position per sentence, so the face phrases what it is saying.
+  const brows: AvatarCue[] = [];
+  if (opts.brow === "lively") {
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const per = sentences.length > 0 ? durationMs / sentences.length : durationMs;
+    sentences.forEach((sentence, i) => {
+      const frame = /\?$/.test(sentence.trim())
+        ? "brow_raised"
+        : /!$/.test(sentence.trim())
+          ? "brow_raised"
+          : rnd() < 0.3
+            ? "brow_furrowed"
+            : "brow_neutral";
+      brows.push({ at: Math.round(i * per), ms: Math.round(per), frame });
+    });
+  } else {
+    brows.push({ at: 0, ms: durationMs, frame: "brow_neutral" });
+  }
+
+  return { durationMs, mouth, eyes, brows, line: text };
+}
+
+/** Which frames a track actually needs, so you only generate those. */
+export function framesNeededFor(track: AvatarTrack): string[] {
+  const used = new Set<string>();
+  for (const c of [...track.mouth, ...track.eyes, ...track.brows]) used.add(c.frame);
+  // eyes_open is the resting state and is never cued explicitly.
+  used.add("eyes_open");
+  return [...used].sort();
 }

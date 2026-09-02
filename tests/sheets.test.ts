@@ -28,7 +28,11 @@ describe("the sheet definitions", () => {
     for (const d of SHEET_DEFS) {
       expect(d.label.length, d.kind).toBeGreaterThan(3);
       expect(d.blurb.length, d.kind).toBeGreaterThan(15);
-      expect(d.frames.length, d.kind).toBeGreaterThanOrEqual(5);
+      // Three, not five. This floor was five back when every sheet was a set
+      // of poses. The avatar sheets are deliberately three: a blink is
+      // open/half/shut, and brows are down/neutral/up. Padding them to five
+      // would mean inventing frames nobody needs and paying to generate them.
+      expect(d.frames.length, d.kind).toBeGreaterThanOrEqual(3);
       expect(d.columns, d.kind).toBeGreaterThan(0);
       expect(d.common, d.kind).toContain("identical character");
       expect(d.negative, d.kind).toContain("multiple characters");
