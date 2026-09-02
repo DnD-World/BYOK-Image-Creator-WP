@@ -26,7 +26,8 @@ asks before spending a penny.
 
 [![CI](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml/badge.svg)](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/DnD-World/BYOK-Image-Creator-WP?label=release&color=f2a33c)](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
-[![Tests](https://img.shields.io/badge/tests-349-56b8a5)](tests/)
+[![Licence](https://img.shields.io/badge/licence-Apache--2.0-8cb56f)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-385-56b8a5)](tests/)
 
 </div>
 
@@ -59,15 +60,34 @@ it probably is not the right tool, and that is fine.
 
 <br>
 
-Since around March 2026 the Gemini API bills against a separate **Prepay – AI
-Studio** balance. Ordinary Google Cloud credit — including free trial credit
-and most vouchers — does not pay for it. A key in that state will happily list
-all fifty models and then refuse every actual request, usually with a `429`
-that reads like a rate limit and is not one.
+**Linking your project to Google Cloud billing is what breaks it.** That sounds
+backwards, so here it is in order:
+
+1. Your project starts on the **free tier**. It works.
+2. You link it to a Cloud billing account — to use your credit, or because
+   something told you to.
+3. Google now marks the project **paid tier**, and paid tier bills against a
+   separate **Prepay – AI Studio** balance.
+4. Ordinary Google Cloud credit does not pay for that balance. Neither does
+   free-trial credit, and nor do most vouchers.
+5. So the balance is zero, and every request is refused with a `429` that
+   reads like a rate limit and is not one.
+
+The result: a project with hundreds of euros of Cloud credit sitting in it
+that cannot make a single call, *because* of the money. **Unlinking the
+project restores the free tier** — confirmed on a real account, not repeated
+from a forum.
 
 Image Forge tests each key with a **real generation call**, not a model list,
 so it tells you the truth: *"The key is valid, but its project has no
 credit."* Then it offers you the free engines instead of failing.
+
+There is a second, different failure that looks identical from the outside.
+Google also returns `403` *"Your project has been denied access"* — a block on
+the whole project, not a billing problem, and not something more credit will
+fix. On a real thirteen-key setup we found eight keys in the first state and
+**five in the second**, which no amount of topping up would have helped. The
+two are now reported separately, by name.
 
 It also finds the same key pasted into two slots, which is easy to do and
 quietly halves what you thought your allowance was.
@@ -254,6 +274,17 @@ Being straight about this saves everyone time.
 - **Not able to fix a provider's outage or an empty balance.** It will tell
   you clearly which one it is, and offer you a free engine instead.
 - **Mac and Linux run from source only.** The packaged builds are Windows.
+
+---
+
+## Licence
+
+[Apache-2.0](LICENSE). Use it, sell what you make with it, build on it.
+
+If you redistribute it or something derived from it, the [NOTICE](NOTICE)
+file has to travel with it — in your docs, your own NOTICE, or your credits
+screen. That is the one thing asked in return. Just *using* the app carries no
+obligation at all.
 
 ---
 

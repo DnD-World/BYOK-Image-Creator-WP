@@ -63,8 +63,12 @@ describe("checking a connection never costs money", () => {
     );
     const r = await testConnection("gemini-free", settings());
     expect(r.ok).toBe(false);
-    expect(r.message).toMatch(/no credit/i);
-    expect(r.detail).toMatch(/SAME project/);
+    // Names the actual cause. This used to say "no credit" and point at
+    // putting the credit on the same project, which was wrong and sent the
+    // user to buy something they already had: the project had €262 of Cloud
+    // credit. Linking to Cloud billing is what switches the free tier off.
+    expect(r.message).toMatch(/free tier/i);
+    expect(r.detail).toMatch(/unlink/i);
   });
 
   it("passes a Google key only once it has really been used", async () => {
@@ -199,5 +203,44 @@ describe("free Google keys are always spent before paid ones", () => {
       60_000
     );
     expect(benched).toEqual([{ pool: "geminiKeys", id: "free1" }]);
+  });
+});
+
+describe("Google's two different 403s", () => {
+  it("does not call a blocked project a refused key", async () => {
+    // Found on a real account: five keys returned 403 "denied access" while
+    // eight returned 429 "no credit". Reporting both as "cannot be used" hid
+    // the difference and sent us looking for a browser problem that was not
+    // there — the same keys fail identically from a server.
+    const { explainForTest } = await import("../src/lib/testConnection");
+    const blocked = explainForTest(403, '{"error":{"message":"Your project has been denied access. Please contact support."}}');
+    expect(blocked).toMatch(/blocked the project/i);
+    expect(blocked).toMatch(/key itself is fine/i);
+    expect(blocked).not.toMatch(/^the key was refused$/);
+  });
+
+  it("still calls an ordinary 403 a refused key", async () => {
+    const { explainForTest } = await import("../src/lib/testConnection");
+    expect(explainForTest(403, '{"error":{"message":"API key not valid"}}')).toBe("the key was refused");
+  });
+
+  it("keeps no-credit separate from blocked", async () => {
+    const { explainForTest } = await import("../src/lib/testConnection");
+    expect(explainForTest(429, "Your prepayment credits are depleted")).not.toMatch(/blocked/i);
+  });
+});
+
+describe("the billing-link trap", () => {
+  it("blames the billing link, not the user's wallet", async () => {
+    // Confirmed on a real account: the project had €262 of Cloud credit and
+    // still refused every call. Linking a project to Cloud billing flips it to
+    // paid tier, and paid tier wants an AI Studio Prepay balance that Cloud
+    // credit does not fund. Unlinking restored the free tier. Telling someone
+    // in that state to "add credit" sends them to buy what they already have.
+    const { testConnectionForTest } = await import("../src/lib/testConnection");
+    const r = await testConnectionForTest(429, "Your prepayment credits are depleted.");
+    expect(r.detail).toMatch(/unlink/i);
+    expect(r.detail).toMatch(/does NOT pay for/);
+    expect(r.message).toMatch(/free tier/i);
   });
 });

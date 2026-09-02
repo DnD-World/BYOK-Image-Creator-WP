@@ -42,6 +42,10 @@ const timeout = (ms: number): AbortSignal => AbortSignal.timeout(ms);
 
 const explain = (status: number, body: string): string => {
   const trimmed = body.trim().slice(0, 200);
+  // Google returns 403 for two completely different situations, and calling
+  // both "refused" sent us hunting a browser problem that did not exist.
+  if (status === 403 && /denied access/i.test(body))
+    return "Google has blocked the project this key belongs to — the key itself is fine. Only Google can lift this; contact their support.";
   if (status === 401 || status === 403) return "the key was refused";
   if (status === 404) return "that address or model does not exist";
   if (status === 429) return "the key is right, but it has hit its limit for now";
@@ -172,8 +176,14 @@ async function testGeminiKey(key: string, model: string): Promise<TestResult> {
     if (!res.ok) {
       if (/prepayment credits are depleted|billing/i.test(body)) {
         return bad(
-          "The key is valid, but its project has no credit.",
-          "It can list models and nothing else. The credit must be on the SAME project the key belongs to — check at ai.studio/projects, and make the key inside the project that holds the balance."
+          "This key's project is linked to Cloud billing, which switched off its free tier.",
+          "Counter-intuitive but confirmed on a real account: linking a project to Google Cloud billing marks it PAID TIER, and paid tier bills against an 'AI Studio Prepay' balance — which ordinary Google Cloud credit does NOT pay for. So a project with hundreds of euros of Cloud credit gets a balance of zero and refuses everything. To get the free tier back: unlink this project from its billing account at console.cloud.google.com/billing. To keep it paid: add a Prepay balance at ai.studio/projects. Either works; linked-with-Cloud-credit-only does not."
+        );
+      }
+      if (res.status === 403 && /denied access/i.test(body)) {
+        return bad(
+          "Google has blocked this key's project.",
+          "A different problem from the credit one, and not something more credit fixes. Verified as not a browser issue: the same key fails identically through a server-side proxy. Google says only “Your project has been denied access. Please contact support.” Make a key in a fresh project, or take it up with Google."
         );
       }
       return bad(`The key lists models but cannot be used.`, explain(res.status, body));
@@ -386,4 +396,21 @@ export async function findDuplicateKeys(pool: { label: string; key: string }[]):
     seen.set(id, [...(seen.get(id) ?? []), k.label]);
   }
   return [...seen.values()].filter((labels) => labels.length > 1).map((labels) => labels.join(" and "));
+}
+
+/** The failure-naming rules, exposed so tests can pin them. */
+export const explainForTest = explain;
+
+/**
+ * The Google failure messages, reachable from a test without a network. The
+ * wording is the feature here, so it is worth pinning.
+ */
+export async function testConnectionForTest(status: number, body: string): Promise<TestResult> {
+  if (status === 429 && /prepayment credits are depleted|billing/i.test(body)) {
+    return bad(
+      "This key's project is linked to Cloud billing, which switched off its free tier.",
+      "Counter-intuitive but confirmed on a real account: linking a project to Google Cloud billing marks it PAID TIER, and paid tier bills against an 'AI Studio Prepay' balance — which ordinary Google Cloud credit does NOT pay for. So a project with hundreds of euros of Cloud credit gets a balance of zero and refuses everything. To get the free tier back: unlink this project from its billing account at console.cloud.google.com/billing. To keep it paid: add a Prepay balance at ai.studio/projects. Either works; linked-with-Cloud-credit-only does not."
+    );
+  }
+  return bad(`Google answered ${status}.`, explain(status, body));
 }
