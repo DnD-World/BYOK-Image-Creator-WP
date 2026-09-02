@@ -61,6 +61,8 @@ import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./com
 import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
 import Letterer from "./components/Letterer";
+import SheetMaker from "./components/SheetMaker";
+import VectorMaker from "./components/VectorMaker";
 import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
@@ -135,6 +137,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [compare, setCompare] = useState<null | { rowId: number; variantSeed: number; variant: string }>(null);
   const [gifFor, setGifFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
   const [textFor, setTextFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [vectorOpen, setVectorOpen] = useState(false);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -1318,6 +1322,22 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">scribe</span>
           </button>
           <button
+            onClick={() => setSheetOpen(true)}
+            title="Make a sheet — walk cycles, turnarounds, mouth shapes for an avatar"
+            className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
+          >
+            <span className="text-[13px] leading-none">▦</span>
+            <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">sheet</span>
+          </button>
+          <button
+            onClick={() => setVectorOpen(true)}
+            title="Make a vector — icons, illustrations and animated icons, written as code"
+            className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
+          >
+            <span className="text-[13px] leading-none">◆</span>
+            <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">vector</span>
+          </button>
+          <button
             onClick={() => (folder.linked ? syncAllToFolder() : linkFolder())}
             title={folder.linked ? `Sync all plates to ${folder.name}` : "Link an output folder"}
             className={`btn-press flex items-center gap-1.5 rounded-lg border px-2.5 py-2 ${
@@ -1612,6 +1632,30 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             }
           }}
           pushToast={pushToast}
+        />
+      )}
+
+      {sheetOpen && (
+        <SheetMaker
+          settings={settings}
+          onClose={() => setSheetOpen(false)}
+          pushToast={pushToast}
+          pushLog={pushLog}
+          onExhaust={(pool, id, until) =>
+            setSettings((prev) => ({
+              ...prev,
+              [pool]: prev[pool].map((k) => (k.id === id ? { ...k, exhaustedUntil: until } : k)),
+            }))
+          }
+        />
+      )}
+
+      {vectorOpen && (
+        <VectorMaker
+          settings={settings}
+          onClose={() => setVectorOpen(false)}
+          pushToast={pushToast}
+          pushLog={pushLog}
         />
       )}
 

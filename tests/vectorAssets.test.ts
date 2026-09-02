@@ -248,3 +248,29 @@ describe("naming and previewing", () => {
     expect(decodeURIComponent(url.split(",")[1])).toBe(GOOD_ICON);
   });
 });
+
+describe("the namespace, which models leave out and browsers demand", () => {
+  it("adds xmlns when the model forgot it", () => {
+    // Verified against Codestral on 2026-09-02: valid markup, no xmlns, and it
+    // renders as a broken-image icon in an <img> and in any saved .svg file.
+    const r = sanitiseSvg('<svg viewBox="0 0 24 24"><path d="M12 2v4"/></svg>');
+    expect(r.svg).toContain('xmlns="http://www.w3.org/2000/svg"');
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not add a second one when it is already there", () => {
+    const r = sanitiseSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0"/></svg>');
+    expect(r.svg.match(/xmlns=/g)).toHaveLength(1);
+  });
+
+  it("keeps the namespace through a full makeVector call", async () => {
+    vi.stubGlobal("fetch", async () =>
+      Response.json(
+        { choices: [{ message: { content: '<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>' } }] },
+        { status: 200 }
+      )
+    );
+    const a = await makeVector("svg-icon", "an anvil", settings());
+    expect(a.code).toContain("xmlns");
+  });
+});

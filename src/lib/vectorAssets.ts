@@ -141,6 +141,13 @@ export function sanitiseSvg(raw: string): SanitiseResult {
     svg = svg.replace(/javascript\s*:/gi, "");
   }
 
+  // An SVG shown in an <img>, or saved as a .svg file, is its own document and
+  // MUST declare the namespace. Models routinely leave it out — the markup then
+  // looks perfect and renders as a broken-image icon everywhere. Add it back.
+  if (!/\sxmlns\s*=/i.test(svg)) {
+    svg = svg.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
   return { svg: svg.trim(), removed, ok: svg.includes("<svg") };
 }
 

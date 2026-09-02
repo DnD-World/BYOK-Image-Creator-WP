@@ -364,9 +364,11 @@ export async function generateReal(
   s: ForgeSettings,
   signal: AbortSignal | undefined,
   exhaust: Exhaust,
-  cooldownMs: number
+  cooldownMs: number,
+  /** base64 pictures for the model to work from — sheets use this for consistency */
+  opts: { refImages?: string[] } = {}
 ): Promise<StrikeResult> {
-  const { bytes, mime } = await generateBytes(row, s, signal, exhaust, cooldownMs);
+  const { bytes, mime } = await generateBytes(row, s, signal, exhaust, cooldownMs, opts);
   const blob = new Blob([bytes], { type: mime || "image/png" });
   return { blob, dataUrl: await blobToDataUrl(blob) };
 }
