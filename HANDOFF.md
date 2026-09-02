@@ -231,8 +231,8 @@ entry + menu item + section JSX, thread any new callbacks through `App.tsx`.
 ## 11. Known sharp edges
 
 - **`vite build` skips typecheck** — run `npm run typecheck`.
-- **No test suite.** Highest-value targets: `csv.ts` (quoting/CRLF),
-  `validate.ts`, `resolveRoute`/cooldown math. `vitest` recommended.
+- **Thin test suite.** `npm test` (vitest) covers `csv.ts`, `validate.ts`,
+  `engines.mjs` and the MCP tool surface; the React components have none.
 - **Pollinations** is slow (5–40 s) and occasionally CORS-flaky; that's why
   the simulated engine exists and why requests are sequential, not parallel.
 - **localStorage** has a ~5 MB ceiling — the 350 ms debounce helps; if
@@ -248,7 +248,8 @@ entry + menu item + section JSX, thread any new callbacks through `App.tsx`.
 
 ## 12. Where to take it next (prioritized)
 
-1. **CI + vitest** — typecheck/build gate, unit tests for the three pure libs.
+1. **Component tests** — CI (.github/workflows/ci.yml) already gates
+   typecheck + vitest + build; the UI layer is still untested.
 2. **Code signing** for the installers (cert purchase → `win.certificateFile`
    in `build-exe.js` / `certificateThumbprint` in `tauri.conf.json`).
 3. **A `forge` CLI** wrapping `mcp-server.js` so the pipeline runs headless

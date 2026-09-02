@@ -52,13 +52,31 @@ an accordion. Saved setups become one-click **recipes** for the next batch.
 
 **🎨 Engines, per row** — the `model` column routes *each row* to its own painter:
 
-| model id | engine | free allowance | needs a key? |
+| model id | engine | what it costs | free allowance |
 |---|---|---|---|
-| `imagen-4-ultra` | Google Imagen (Gemini API) | ~25 images/day | free key |
-| `imagen-4` · `imagen-4-fast` | Google Imagen | ~25 images/day each | free key |
-| `flux` · `turbo` | Pollinations | unlimited fair-use | **no key at all** |
-| `dall-e-3` · `gpt-image-1` | any OpenAI-compatible endpoint | paid | your key |
-| *(practice forge)* | procedural, offline, deterministic | infinite | never |
+| `cloudflare-flux` | Cloudflare Workers AI | **free** | ~690 images/day, resets midnight UTC, no card |
+| `flux` · `turbo` | Pollinations | **free** | unlimited, but one every ~5s, and it needs a free token |
+| `nano-banana-2-lite` | Google | $0.034 · batch $0.017 | none |
+| `nano-banana-2` | Google | $0.067 · batch $0.034 | none |
+| `nano-banana` | Google | $0.039 · batch $0.019 | none — **Google switches it off 2 Oct 2026** |
+| `gemini-3-pro-image` | Google | $0.134 · batch $0.067 | none |
+| `dall-e-3` · `gpt-image-1` | any OpenAI-compatible endpoint | ~$0.04 | none |
+| *(practice forge)* | procedural, offline, deterministic | free | infinite |
+
+> Prices checked against the providers on **2 September 2026**. "Batch" is Google's
+> half price for pictures you are willing to wait for — see below.
+>
+> **Two things changed under this app in August 2026.** Google retired every
+> Imagen endpoint on **17 August**, and with it the old free ~25/day allowance;
+> image generation moved to a new API and there is no free Google tier any more.
+> Pollinations started refusing anonymous requests with a bot check. Both are
+> handled: old manifests are migrated automatically, and Settings → Advanced →
+> Repair moves any leftover row onto a current model.
+
+**⏳ Batch jobs — the same pictures for half the money** — hand a pile of rows to
+Google in one go and collect them later. Press **Batch · half price**, then
+**Check batches** when you come back. Google's target is 24 hours; in practice it
+is usually well under an hour. The job survives closing the app.
 
 **🔑 Key pools with rotation** — add as many keys as you like per engine.
 On a 429 the current key rests and the next one retries the *same row*
@@ -93,7 +111,9 @@ this was all built for, one click away.
 
 **🤖 An agent API** — `scripts/mcp-server.js` speaks MCP over stdio, so
 Claude Code, Hermes, LangChain and n8n can read the manifest, add ideas and
-*generate real images for free* (see below).
+*generate real images for free* (see below). It runs the same engines the app
+does, so an agent gets keyless Pollinations out of the box and Imagen / DALL-E
+as soon as you hand it keys.
 
 ---
 
@@ -117,6 +137,24 @@ npm run tauri:icons && npm run tauri:build   # Tauri → src-tauri\target\…\bu
 claude mcp add image-forge node scripts/mcp-server.js
 # then: "use the forge to make the pending images" — it will.
 ```
+
+With no keys the agent generates through keyless Pollinations. To give it the
+same keyed engines the app uses, point it at a backup exported from
+**Settings → Advanced → Backup**, or set the keys in its environment:
+
+```bash
+node scripts/mcp-server.js --settings ./image-forge-backup-2026-09-01.json
+# or: GEMINI_API_KEYS=key1,key2 node scripts/mcp-server.js
+```
+
+| Variable | What it does |
+|---|---|
+| `GEMINI_API_KEY` / `GEMINI_API_KEYS` | Imagen keys (comma-separated, rotated on 429) |
+| `OPENAI_API_KEY` / `OPENAI_API_KEYS` | keys for any OpenAI-compatible endpoint |
+| `OPENAI_BASE_URL`, `OPENAI_IMAGE_MODEL` | point at Together, OpenRouter, a local WebUI… |
+| `FORGE_PROVIDER` | force `pollinations` / `imagen` / `openai` |
+
+A row's `model` column still wins over all of it, exactly as in the app.
 
 Full plain-language walkthrough: **[GUIDE.md](GUIDE.md)** ·
 handing the repo to someone else: **[HANDOFF.md](HANDOFF.md)** ·
@@ -159,8 +197,12 @@ src/
 ├─ index.css               the whole design system (tokens, motion, effects)
 ├─ lib/
 │  ├─ csv.ts               RFC-4180 parser + full-schema read/write
-│  ├─ providers.ts         engines, key pools, 429 rotation, cooldowns, usage,
-│  │                       scribe + factory chat, settings shape & migration
+│  ├─ engines.mjs          THE image engines — model registry, routing, 429
+│  │                       rotation. DOM-free plain ESM so the MCP server
+│  │                       runs the exact same code (types: engines.d.mts)
+│  ├─ providers.ts         browser wrapper over engines.mjs + key pools,
+│  │                       cooldowns, usage, scribe + factory chat,
+│  │                       settings shape & migration
 │  ├─ preview.ts           seeded procedural plates (the "practice forge")
 │  ├─ output.ts            folder linking, subfolder routing, ZIP, blob helpers
 │  ├─ tauriFs.ts           Tauri-native folder picker/writer (browser fallback)
@@ -174,7 +216,7 @@ src/
 │  ├─ ui.tsx               icon set, chips, buttons, toasts, code blocks
 │  └─ effects.tsx          DotField · EmberField · StarField · BorderGlow · CursorFX
 scripts/
-├─ mcp-server.js           the agent API (6 tools, stdio, keyless generation)
+├─ mcp-server.js           the agent API (6 tools, stdio, same engines as the app)
 ├─ build-exe.js            vite → icon → electron-builder → release/
 ├─ tauri-icons.js          emblem → full Tauri icon set
 └─ publish-github.bat      one-click git init → push
@@ -211,9 +253,9 @@ except the requests to the engines you choose.
   (Pollinations for images, the offline idea generator for text).
 - No `console.log` in shipped code; feedback flows through toasts + the
   forge console. No `alert/confirm` — ever.
-- Verify with `npm run build` (and `npm run typecheck`); there's no test
-  runner yet — `vitest` around `csv.ts` / `validate.ts` / `providers.ts`
-  would be a beloved first PR.
+- Verify with `npm test`, `npm run typecheck` and `npm run build` — all three
+  run in CI on every push and PR (.github/workflows/ci.yml). Tests live in
+  `tests/`; anything touching the CSV, filenames or the engines needs one.
 
 ---
 
@@ -227,7 +269,8 @@ except the requests to the engines you choose.
 - [ ] **code signing** (kills the SmartScreen warning — needs a certificate)
 - [ ] **OAuth Google Drive upload** as a fourth output door
 - [ ] **autosave prompt templates** + scheduled nightly runs
-- [ ] a test suite (vitest) + a real `forge` CLI wrapping the MCP server
+- [x] a test suite (vitest, 69 tests) + GitHub Actions CI
+- [ ] a real `forge` CLI wrapping the MCP server
 - [ ] reconnect Emberfair to pull *real* generated plates by filename ⚔️
 
 ---
