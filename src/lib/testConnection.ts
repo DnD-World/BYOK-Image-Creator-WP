@@ -129,9 +129,19 @@ async function testPollinations(s: ForgeSettings): Promise<TestResult> {
   }
 }
 
-/** Listing models is free and proves the key, without touching any allowance. */
+/**
+ * Two steps, because listing models is free and therefore proves almost nothing.
+ *
+ * A Google key with no credit lists all 50 models perfectly happily and then
+ * refuses every actual request. Verified 2026-09-02 — a key that "passed" could
+ * not generate a single word. So we list first, then spend a few tokens proving
+ * it can really be used. Those tokens cost a tiny fraction of a cent, and cost
+ * nothing at all when the key has no credit, because the call is refused.
+ */
 async function testGeminiKey(key: string, model: string): Promise<TestResult> {
   if (!key.trim()) return bad("No key in this box yet.");
+
+  let names: string[] = [];
   try {
     const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
       headers: { "x-goog-api-key": key.trim() },
@@ -140,14 +150,40 @@ async function testGeminiKey(key: string, model: string): Promise<TestResult> {
     const body = await res.text().catch(() => "");
     if (!res.ok) return bad(`Google answered ${res.status}.`, explain(res.status, body));
     const json = JSON.parse(body) as { models?: { name?: string }[] };
-    const names = (json.models ?? []).map((m) => (m.name ?? "").replace("models/", ""));
-    const has = model && names.some((n) => n.startsWith(model));
-    return ok(
-      has ? `Working — and "${model}" is available to this key.` : "Working — the key is good.",
-      has ? undefined : model ? `It did not list "${model}". It may still work, or the name may have changed.` : undefined
-    );
+    names = (json.models ?? []).map((m) => (m.name ?? "").replace("models/", ""));
   } catch {
     return bad("Could not reach Google.");
+  }
+
+  // Now actually use it. A few tokens on the cheapest model.
+  try {
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key.trim() },
+        body: JSON.stringify({ contents: [{ parts: [{ text: "say ready" }] }] }),
+        signal: timeout(25000),
+      }
+    );
+    const body = await res.text().catch(() => "");
+    if (!res.ok) {
+      if (/prepayment credits are depleted|billing/i.test(body)) {
+        return bad(
+          "The key is valid, but its project has no credit.",
+          "It can list models and nothing else. The credit must be on the SAME project the key belongs to — check at ai.studio/projects, and make the key inside the project that holds the balance."
+        );
+      }
+      return bad(`The key lists models but cannot be used.`, explain(res.status, body));
+    }
+    const has = model && names.some((n) => n.startsWith(model));
+    return ok(
+      "Working — and it can actually be used.",
+      has ? `"${model}" is available to this key.` : model ? `It did not list "${model}", so pictures may fail.` : undefined,
+      false
+    );
+  } catch {
+    return bad("Could not reach Google for the second check.");
   }
 }
 

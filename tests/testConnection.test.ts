@@ -50,20 +50,38 @@ describe("checking a connection never costs money", () => {
     expect(r.detail).toMatch(/No allowance/i);
   });
 
-  it("asks Google only for its model list", async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json({ models: [{ name: "models/gemini-3.1-flash-image" }] }, { status: 200 })
+  it("does not trust a Google key just because it lists models", async () => {
+    // A key with no credit lists all 50 models and then refuses everything.
+    // Verified against a real key on 2026-09-02.
+    vi.stubGlobal("fetch", async (url: string) =>
+      String(url).endsWith("/models")
+        ? Response.json({ models: [{ name: "models/gemini-3.1-flash-image" }] }, { status: 200 })
+        : new Response(
+            JSON.stringify({ error: { message: "Your prepayment credits are depleted." } }),
+            { status: 429 }
+          )
     );
-    vi.stubGlobal("fetch", fetchMock);
+    const r = await testConnection("gemini-free", settings());
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/no credit/i);
+    expect(r.detail).toMatch(/SAME project/);
+  });
+
+  it("passes a Google key only once it has really been used", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      String(url).endsWith("/models")
+        ? Response.json({ models: [{ name: "models/gemini-3.1-flash-image" }] }, { status: 200 })
+        : Response.json({ candidates: [{ content: { parts: [{ text: "ready" }] } }] }, { status: 200 })
+    );
     const r = await testConnection("gemini-free", settings());
     expect(r.ok).toBe(true);
-    expect(r.free).toBe(true);
-    expect(r.message).toMatch(/available to this key/);
+    expect(r.message).toMatch(/can actually be used/);
+    expect(r.free).toBe(false);
   });
 });
 
 describe("it tells you what is actually wrong", () => {
-  it("says the key was refused, not just '403'", async () => {
+  it("says the key was refused, not just 403", async () => {
     vi.stubGlobal("fetch", async () => new Response("nope", { status: 403 }));
     const r = await testConnection("gemini-free", settings());
     expect(r.ok).toBe(false);
@@ -120,8 +138,12 @@ describe("it tells you what is actually wrong", () => {
       return Response.json({ models: [] }, { status: 200 });
     });
     await testConnection("gemini-free", settings());
+    const afterFree = seen.length;
     await testConnection("gemini-paid", settings());
-    expect(seen).toEqual(["secret-free1", "secret-paid1"]);
+    // each check lists models and then tries to use the key, so two calls each
+    expect(seen.slice(0, afterFree).every((k) => k === "secret-free1")).toBe(true);
+    expect(seen.slice(afterFree).every((k) => k === "secret-paid1")).toBe(true);
+    expect(seen.length).toBeGreaterThan(afterFree);
   });
 });
 
