@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "image-forge": {
+      "command": "node",
+      "args": [
+        "scripts/mcp-server.js",
+        "--csv",
+        "marketplace-images.csv",
+        "--out",
+        "generated-images"
+      ],
+      "env": {}
+    }
+  }
+}

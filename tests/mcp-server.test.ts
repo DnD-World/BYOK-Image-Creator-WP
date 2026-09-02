@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { SCHEMAS, TOOLS, safeFilename } from "../scripts/mcp-server.js";
 
 describe("safeFilename", () => {
@@ -68,5 +69,27 @@ describe("tool declarations", () => {
 
   it("declares a schema for every advertised tool and nothing more", () => {
     expect(TOOLS.map((t) => t.name).sort()).toEqual(Object.keys(SCHEMAS).sort());
+  });
+});
+
+describe("what an agent inherits by default", () => {
+  it("tells models that cannot spell not to try, exactly as the app does", async () => {
+    // Otherwise an agent quietly produces pictures covered in gibberish
+    // lettering, while the same prompt through the app comes out clean.
+    const src = await readFile(new URL("../scripts/mcp-server.js", import.meta.url), "utf8");
+    expect(src).toContain("suppressTextOnWeakModels: file.suppressTextOnWeakModels !== false");
+    expect(src).toContain("localTextQuality");
+  });
+
+  it("reads the local engine from a settings file or the environment", async () => {
+    const src = await readFile(new URL("../scripts/mcp-server.js", import.meta.url), "utf8");
+    for (const v of ["FORGE_LOCAL_BASE", "FORGE_LOCAL_MODEL", "CLOUDFLARE_ACCOUNT_ID", "POLLINATIONS_TOKEN"]) {
+      expect(src, `should honour ${v}`).toContain(v);
+    }
+  });
+
+  it("never calls a picture on your own machine 'price unknown'", async () => {
+    const src = await readFile(new URL("../scripts/mcp-server.js", import.meta.url), "utf8");
+    expect(src).toMatch(/engine === "local" \|\| engine === "simulated"/);
   });
 });

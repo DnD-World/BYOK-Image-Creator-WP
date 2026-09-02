@@ -131,6 +131,13 @@ function loadSettings() {
     openaiKeys: openaiKeys.map((k) => ({ exhaustedUntil: 0, ...k })),
     openaiBase: process.env.OPENAI_BASE_URL || file.openaiBase || "https://api.openai.com/v1",
     openaiModel: process.env.OPENAI_IMAGE_MODEL || file.openaiModel || "gpt-image-1",
+    localBase: process.env.FORGE_LOCAL_BASE || file.localBase || "http://localhost:8080/v1",
+    localModel: process.env.FORGE_LOCAL_MODEL || file.localModel || "flux.2-klein-4b",
+    localKey: process.env.FORGE_LOCAL_KEY || file.localKey || "",
+    localTextQuality: file.localTextQuality || "poor",
+    // Same default as the app: models that cannot spell are told not to try,
+    // otherwise an agent quietly produces pictures covered in gibberish.
+    suppressTextOnWeakModels: file.suppressTextOnWeakModels !== false,
     cooldowns: file.cooldowns && typeof file.cooldowns === "object" ? file.cooldowns : {},
   };
 }
@@ -257,7 +264,13 @@ async function generateImage(row) {
 
 const describeEngine = () => {
   const { engine, apiModel, def } = resolveRoute({ model: "" }, SETTINGS);
-  const cost = def ? (def.priceUsd === 0 ? "free" : `${formatUsd(def.priceUsd)} per image`) : "price unknown";
+  const cost = def
+    ? def.priceUsd === 0
+      ? "free"
+      : `${formatUsd(def.priceUsd)} per image`
+    : engine === "local" || engine === "simulated"
+      ? "free"
+      : "price unknown";
   const wired = [
     SETTINGS.cloudflare.accountId && SETTINGS.cloudflare.token ? "cloudflare ✓" : "cloudflare ✗",
     SETTINGS.pollinationsToken ? "pollinations token ✓" : "pollinations token ✗",
