@@ -27,7 +27,7 @@ asks before spending a penny.
 [![CI](https://github.com/Stravelakis/image-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/Stravelakis/image-forge/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/Stravelakis/image-forge?label=release&color=f2a33c)](https://github.com/Stravelakis/image-forge/releases/latest)
 [![Licence](https://img.shields.io/badge/licence-Apache--2.0-8cb56f)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-413-56b8a5)](tests/)
+[![Tests](https://img.shields.io/badge/tests-442-56b8a5)](tests/)
 
 </div>
 

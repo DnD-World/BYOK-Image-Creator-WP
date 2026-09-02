@@ -78,6 +78,8 @@ import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./com
 import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
 import UpdateReadyDialog from "./components/UpdateReadyDialog";
+import ChatView from "./components/ChatView";
+import { filenameFor, type ChatPlan } from "./lib/chatPlan";
 import { CountUp, type MotionLevel } from "./components/motion";
 import Letterer from "./components/Letterer";
 import SheetMaker from "./components/SheetMaker";
@@ -1144,6 +1146,44 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     [importCsv, pushLog, pushToast]
   );
 
+  /**
+   * The chat proposes; this is what actually happens.
+   *
+   * It adds a real manifest row and runs it through the ordinary queue, so the
+   * paid confirmation, key rotation, cooldowns and folder saving all apply
+   * exactly as they do everywhere else. The chat gets no private path to
+   * spending money.
+   */
+  const forgeFromChat = useCallback(
+    async (plan: ChatPlan): Promise<number | null> => {
+      const taken = rowsRef.current.map((r) => r.filename);
+      const id = rowsRef.current.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+      const row: ManifestRow = {
+        id,
+        filename: filenameFor(plan.prompt, "item", taken),
+        prompt: plan.prompt,
+        category: "item",
+        item_id: "",
+        shop_id: "",
+        event_id: "",
+        style: plan.style,
+        aspect_ratio: plan.aspect,
+        seed: Math.floor(Math.random() * 98) + 1,
+        model: plan.model,
+        status: "pending",
+        error: "",
+        generated_at: "",
+        imported_attachment_id: "",
+      };
+      setRows((prev) => [...prev, row]);
+      // Let the new row reach state before the queue looks for it.
+      await new Promise((r) => setTimeout(r, 0));
+      await runQueue([id]);
+      return id;
+    },
+    [runQueue]
+  );
+
   const checkForUpdate = useCallback(async () => {
     // The app knows where it came from. Asking the user to type the owner and
     // repo before it would even look was a pointless gate — their setting
@@ -1393,7 +1433,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           }}
           onWpImport={() => setWpOpen(true)}
           onZip={zipAll}
-        />
+          motion={motionLevel}
+            />
 
         <div className="ml-auto flex items-center gap-2">
           {onOpenMarket && (
@@ -1674,6 +1715,17 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               pushToast={pushToast}
               styleLock={styleLock}
               onLockStyle={setStyleLock}
+            />
+          </main>
+        ) : view === "chat" ? (
+          <main className="min-w-0 flex-1 overflow-y-auto">
+            <ChatView
+              settings={settings}
+              rows={rows}
+              motion={motionLevel}
+              onForge={forgeFromChat}
+              onOpenSettings={() => nav("settings", "text")}
+              pushToast={pushToast}
             />
           </main>
         ) : view === "docs" ? (

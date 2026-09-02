@@ -2,9 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, PROVIDER_META, formatCountdown } from "../lib/providers";
 import { Btn, IChevron, IFlask, IFolder, IGear, IImage, IPlay, IQuill, IRetry, ISparkle, IUpload, IWand, IBook, IX } from "./ui";
+import { CardPanel, PillNav, type NavCard } from "./nav";
+import type { MotionLevel } from "./motion";
 
 export type View =
   | "workbench"
+  | "chat"
   | "wizard"
   | "factory"
   | "lib-images"
@@ -214,6 +217,7 @@ export default function TopMenu({
   onRerunMarked,
   onWpImport,
   onZip,
+  motion,
 }: {
   view: View;
   onNav: (v: View, section?: SettingsSection) => void;
@@ -227,87 +231,79 @@ export default function TopMenu({
   onRerunMarked: () => void;
   onWpImport: () => void;
   onZip: () => void;
+  motion: MotionLevel;
 }) {
+  const [panel, setPanel] = useState<"wizards" | "library" | null>(null);
+
+  // Which pill is lit. Several views live under one destination.
+  const activePill =
+    view === "wizard" || view === "factory"
+      ? "wizards"
+      : view.startsWith("lib-")
+        ? "library"
+        : view === "docs" || view === "agents"
+          ? "docs"
+          : view === "chat"
+            ? "chat"
+            : view === "settings"
+              ? "settings"
+              : "workbench";
+
+  const wizardCards: NavCard[] = [
+    { id: "wizard", title: "Start the wizard", hint: "a new batch, one easy choice at a time", icon: <IWand size={15} />, onPick: () => onNav("wizard") },
+    { id: "factory", title: "Prompt factory", hint: "write a huge list — AI or your own CSV", icon: <ISparkle size={15} />, onPick: () => onNav("factory") },
+    { id: "rerun", title: "Rerun marked & failed", hint: "notes become extra instructions", icon: <IRetry size={15} />, badge: markedCount > 0 ? String(markedCount) : undefined, onPick: onRerunMarked },
+    { id: "wp", title: "Import to WordPress", hint: "real upload with an app password", icon: <IUpload size={15} />, badge: doneCount > 0 ? String(doneCount) : undefined, onPick: onWpImport },
+  ];
+
+  const libraryCards: NavCard[] = [
+    { id: "lib-images", title: "Images", hint: "mark, note and redo any picture", icon: <IImage size={15} />, onPick: () => onNav("lib-images") },
+    { id: "lib-styles", title: "Styles", hint: "the built-in languages, and your own", icon: <IFlask size={15} />, onPick: () => onNav("lib-styles") },
+    { id: "lib-templates", title: "Templates", hint: "saved setups, ready to reuse", icon: <IWand size={15} />, badge: templateCount > 0 ? String(templateCount) : undefined, onPick: () => onNav("lib-templates") },
+    { id: "lib-batches", title: "Previous batches", hint: "what you have run before", icon: <IFolder size={15} />, badge: batchCount > 0 ? String(batchCount) : undefined, onPick: () => onNav("lib-batches") },
+  ];
+
+  const pick = (id: string) => {
+    if (id === "wizards" || id === "library") {
+      setPanel((p) => (p === id ? null : (id as "wizards" | "library")));
+      return;
+    }
+    setPanel(null);
+    if (id === "workbench") onNav("workbench");
+    else if (id === "chat") onNav("chat");
+    else if (id === "docs") onNav("docs");
+  };
+
   return (
-    <nav className="flex items-center gap-1">
-      <Dropdown label="Wizards" active={view === "wizard" || view === "factory"}>
-        {(close) => (
-          <>
-            <Item
-              onClick={() => { onNav("wizard"); close(); }}
-              icon={<IWand size={15} />}
-              title="Start the wizard"
-              hint="a new batch, one easy choice at a time"
-            />
-            <Item
-              onClick={() => { onNav("factory"); close(); }}
-              icon={<ISparkle size={15} />}
-              title="Prompt factory"
-              hint="write a huge list — AI or your own CSV"
-            />
-            <Item
-              onClick={() => { onRerunMarked(); close(); }}
-              icon={<IRetry size={15} />}
-              title="Rerun marked & failed"
-              hint="notes become extra instructions"
-              badge={markedCount > 0 ? String(markedCount) : undefined}
-            />
-            <Item
-              onClick={() => { onWpImport(); close(); }}
-              icon={<IUpload size={15} />}
-              title="Import to WordPress"
-              hint="real upload with an app password"
-              badge={doneCount > 0 ? String(doneCount) : undefined}
-            />
-          </>
-        )}
-      </Dropdown>
+    <nav className="flex items-center gap-2">
+      <div className="relative">
+        <PillNav
+          level={motion}
+          activeId={activePill}
+          onPick={pick}
+          items={[
+            { id: "workbench", label: "Forge" },
+            { id: "chat", label: "Chat" },
+            { id: "wizards", label: "Wizards", badge: markedCount > 0 ? String(markedCount) : undefined },
+            { id: "library", label: "Library", badge: batchCount > 0 ? String(batchCount) : undefined },
+            { id: "docs", label: "Docs" },
+          ]}
+        />
+        {panel === "wizards" && <CardPanel level={motion} cards={wizardCards} onClose={() => setPanel(null)} />}
+        {panel === "library" && <CardPanel level={motion} cards={libraryCards} onClose={() => setPanel(null)} />}
+      </div>
 
-      <Dropdown
-        label="Library"
-        active={view === "lib-images" || view === "lib-styles" || view === "lib-templates" || view === "lib-batches"}
-      >
-        {(close) => (
-          <>
-            <Item onClick={() => { onNav("lib-images"); close(); }} icon={<IImage size={15} />} title="Images" hint="mark, note and redo any picture" />
-            <Item onClick={() => { onNav("lib-styles"); close(); }} icon={<IFlask size={15} />} title="Styles" hint="the five languages + your own" />
-            <Item onClick={() => { onNav("lib-templates"); close(); }} icon={<IWand size={15} />} title="Templates" hint="saved setups, ready to reuse" badge={templateCount > 0 ? String(templateCount) : undefined} />
-            <Item onClick={() => { onNav("lib-batches"); close(); }} icon={<IFolder size={15} />} title="Previous batches" badge={batchCount > 0 ? String(batchCount) : undefined} />
-          </>
-        )}
-      </Dropdown>
-
-      <Dropdown label="Settings" active={view === "settings"}>
-        {(close) => (
-          <>
-            <Item onClick={() => { onNav("settings", "engines"); close(); }} icon={<IImage size={15} />} title="Image engines" hint="keys, models, cooldowns" />
-            <Item onClick={() => { onNav("settings", "styles"); close(); }} icon={<IFlask size={15} />} title="Image styles" />
-            <Item onClick={() => { onNav("settings", "text"); close(); }} icon={<IQuill size={15} />} title="Text engines" hint="the AI that writes for you" />
-            <Item onClick={() => { onNav("settings", "prompts"); close(); }} icon={<ISparkle size={15} />} title="Text prompts" hint="tune how the AI writes" />
-            <Item onClick={() => { onNav("settings", "filenames"); close(); }} icon={<IBook size={15} />} title="Filenames" hint="the seven rules" />
-            <Item onClick={() => { onNav("settings", "folders"); close(); }} icon={<IFolder size={15} />} title="Folders" hint="where images land on disk" />
-            <Item onClick={() => { onNav("settings", "wp"); close(); }} icon={<IUpload size={15} />} title="WP connections" />
-            <Item onClick={() => { onNav("settings", "appearance"); close(); }} icon={<IGear size={15} />} title="Appearance" />
-            <Item onClick={() => { onNav("settings", "advanced"); close(); }} icon={<ISparkle size={15} />} title="Advanced" hint="repair · reset · update" />
-          </>
-        )}
-      </Dropdown>
-
-      <Dropdown label="Docs" active={view === "docs" || view === "agents"}>
-        {(close) => (
-          <>
-            <Item onClick={() => { onNav("docs"); close(); }} icon={<IBook size={15} />} title="The manual" hint="setup to WordPress, step by step" />
-            <Item onClick={() => { onNav("agents"); close(); }} icon={<ISparkle size={15} />} title="Agents & API" hint="n8n · MCP · LangChain recipes" />
-          </>
-        )}
-      </Dropdown>
-
-      <div className="ml-3 flex items-center gap-2 border-l border-line pl-3">
+      <div className="ml-1 flex items-center gap-2 border-l border-line pl-3">
         <ModelSelector provider={provider} onProvider={onProvider} settings={settings} />
+        {/* Settings is a utility, not a destination: one icon, and its nine
+            sections live in its own sidebar where they have room to be read. */}
         <button
           onClick={() => onNav("settings", "engines")}
           title="Settings"
-          className="btn-press rounded-lg border border-line bg-panel/70 p-2 text-dust hover:border-line2 hover:text-cream"
+          aria-label="Settings"
+          className={`btn-press rounded-lg border p-2 transition ${
+            view === "settings" ? "border-ember/60 bg-ember/15 text-cream" : "border-line bg-panel/70 text-dust hover:border-line2 hover:text-cream"
+          }`}
         >
           <IGear size={14} />
         </button>
@@ -316,7 +312,6 @@ export default function TopMenu({
           title="Download finished plates as ZIP"
           className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-line2 sm:flex"
         >
-          <IX size={0} className="hidden" />
           <IImage size={13} className="text-dust" />
           <span className="font-mono text-[10px] text-dust">{doneCount}</span>
         </button>

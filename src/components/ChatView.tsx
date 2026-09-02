@@ -1,0 +1,469 @@
+/**
+ * One picture at a time, by talking.
+ *
+ * The manifest is the right tool for a hundred pictures and the wrong one for
+ * your first. This is the front door: say what you want, get asked at most a
+ * couple of questions, and end up with a picture — plus a button to drop it
+ * into the manifest when one turns into forty.
+ *
+ * It does NOT generate anything itself. It produces a validated plan and hands
+ * it to the queue that already exists, which is how it inherits the paid
+ * confirmation dialog, key rotation, cooldowns, folder saving and the manifest
+ * without reimplementing any of them. A second generation path would be a
+ * second place for money to leak.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ForgeSettings } from "../lib/providers";
+import { scribeChat } from "../lib/providers";
+import { CHAT_SYSTEM } from "../lib/appFacts";
+import { listChatModels } from "../lib/visionEngine";
+import { modelListForPrompt, parseReply, styleListForPrompt, type ChatPlan } from "../lib/chatPlan";
+import { styleById } from "../lib/styleCatalogue";
+import { MODELS } from "../lib/engines.mjs";
+import type { ManifestRow, Toast } from "../types";
+import { Btn, IAlert, IPlay, ISparkle, ITrash } from "./ui";
+import { Stagger, type MotionLevel } from "./motion";
+import {
+  groupChats,
+  loadChats,
+  newChatId,
+  saveChats,
+  titleFrom,
+  type Conversation,
+} from "../lib/chatStore";
+
+import type { StoredTurn as Turn } from "../lib/chatStore";
+
+const OPENERS = [
+  "a cosy village bakery at dawn",
+  "a rain-slick neon noodle stall",
+  "a worn leather-bound spellbook on a desk",
+  "how do I get a free engine working?",
+];
+
+export default function ChatView({
+  settings,
+  rows,
+  motion,
+  onForge,
+  onOpenSettings,
+  pushToast,
+}: {
+  settings: ForgeSettings;
+  rows: ManifestRow[];
+  motion: MotionLevel;
+  /** adds a row and runs it; resolves with the row id */
+  onForge: (plan: ChatPlan) => Promise<number | null>;
+  onOpenSettings: () => void;
+  pushToast: (kind: Toast["kind"], msg: string) => void;
+}) {
+  const [chats, setChats] = useState<Conversation[]>(() => loadChats());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<"date" | "model">("date");
+  // Which text model answers. Stored per conversation, which is what makes
+  // "group by model" in the sidebar mean anything.
+  const [chatModel, setChatModel] = useState(settings.scribe.model);
+  const [modelChoices, setModelChoices] = useState<string[]>([]);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  /**
+   * The id of the conversation being written to, tracked synchronously.
+   *
+   * State is not enough here: the first message creates a conversation and the
+   * reply arrives before React has committed setActiveId, so both writes read
+   * activeId as null and each created its own conversation — one holding the
+   * question, one holding the answer. A ref settles immediately.
+   */
+  const writingTo = useRef<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [forging, setForging] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const ready = Boolean(settings.scribe.key.trim());
+  const active = chats.find((c) => c.id === activeId) ?? null;
+  // Selecting from the sidebar, or starting fresh, must move the write target
+  // too — otherwise the next message lands in the previous conversation.
+  useEffect(() => {
+    writingTo.current = activeId;
+  }, [activeId]);
+  const turns: Turn[] = active?.turns ?? [];
+
+  // Written on every change rather than on unmount: a browser tab that is
+  // closed mid-conversation should not lose it.
+  useEffect(() => saveChats(chats), [chats]);
+
+  // Ask the endpoint what it actually has, rather than shipping a list that
+  // goes stale. Failing is fine — the configured model still works.
+  useEffect(() => {
+    let alive = true;
+    if (!settings.scribe.key.trim()) return;
+    void listChatModels(settings.scribe).then((r) => {
+      if (!alive) return;
+      // Endpoints list everything they serve, including things that cannot
+      // hold a conversation at all. Offering an embedding model as a chat
+      // model is a guaranteed confusing failure.
+      if (r.ok) setModelChoices(r.models.filter((m) => !/embed|ocr|transcribe|tts|moderation|fim/i.test(m)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [settings.scribe]);
+
+  useEffect(() => setChatModel(settings.scribe.model), [settings.scribe.model]);
+
+  /**
+   * Grow the box with the text, up to half the panel. Past that it scrolls:
+   * an input that eats the conversation it belongs to is worse than one that
+   * is slightly too small.
+   */
+  const resize = useCallback(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const cap = Math.max(96, Math.round((shellRef.current?.clientHeight ?? 600) * 0.5));
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, cap)}px`;
+    ta.style.overflowY = ta.scrollHeight > cap ? "auto" : "hidden";
+  }, []);
+
+  useEffect(resize, [draft, resize]);
+
+  /** Update the open conversation, creating one on the first thing said. */
+  const writeTurns = useCallback(
+    (make: (prev: Turn[]) => Turn[], firstSaid?: string) => {
+      const id = writingTo.current ?? newChatId();
+      writingTo.current = id;
+      setChats((prev) => {
+        const now = Date.now();
+        const existing = prev.find((c) => c.id === id);
+        if (!existing) {
+          const created: Conversation = {
+            id,
+            title: titleFrom(firstSaid ?? ""),
+            model: chatModel || settings.scribe.model || "unknown model",
+            createdAt: now,
+            updatedAt: now,
+            turns: make([]),
+          };
+          setActiveId(id);
+          return [created, ...prev];
+        }
+        return prev.map((c) =>
+          c.id === existing.id ? { ...c, updatedAt: now, turns: make(c.turns) } : c
+        );
+      });
+    },
+    [chatModel, settings.scribe.model]
+  );
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: motion === "off" ? "auto" : "smooth", block: "end" });
+  }, [turns, motion]);
+
+  const send = useCallback(
+    async (text: string) => {
+      const said = text.trim();
+      if (!said || busy) return;
+      setDraft("");
+      const history: Turn[] = [...turns, { who: "you", text: said }];
+      writeTurns(() => history, said);
+      setBusy(true);
+      try {
+        // The whole conversation goes each time. These are short exchanges and
+        // a model that forgets what you asked two lines ago is worse than
+        // useless for this.
+        const transcript = history
+          .map((t) => `${t.who === "you" ? "User" : "You"}: ${t.text}`)
+          .join("\n\n");
+        const reply = await scribeChat(
+          { ...settings.scribe, model: chatModel || settings.scribe.model },
+          CHAT_SYSTEM(styleListForPrompt(), modelListForPrompt()),
+          transcript
+        );
+        const { say, plan, corrections } = parseReply(reply, settings);
+        writeTurns((prev) => [...prev, { who: "forge", text: say || "…", plan, corrections }]);
+      } catch (e) {
+        const why = (e as { message?: string })?.message ?? "it did not answer";
+        writeTurns((prev) => [
+          ...prev,
+          { who: "forge", text: `I could not reach the text model — ${why}. Check Settings → Text engines.` },
+        ]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, settings, turns, writeTurns, chatModel]
+  );
+
+  const forge = useCallback(
+    async (plan: ChatPlan, turnIndex: number) => {
+      setForging(true);
+      try {
+        const id = await onForge(plan);
+        if (id !== null) {
+          writeTurns((prev) => prev.map((t, i) => (i === turnIndex ? { ...t, rowId: id } : t)));
+        }
+      } catch (e) {
+        pushToast("err", (e as { message?: string })?.message ?? "could not make that picture");
+      } finally {
+        setForging(false);
+      }
+    },
+    [onForge, pushToast, writeTurns]
+  );
+
+  if (!ready) {
+    return (
+      <div className="mx-auto max-w-2xl p-8">
+        <h1 className="font-display text-3xl text-cream">Chat</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-parch">
+          Describe a picture in your own words and this will help you choose a look, write the prompt, pick an engine
+          and make it — one at a time. It can also answer questions about the app.
+        </p>
+        <div className="mt-5 rounded-xl border border-ember/40 bg-ember/10 p-4">
+          <p className="text-[13px] text-cream">It needs a text model first.</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-parch">
+            One free Mistral key covers writing, code and vision. There is a button in Text engines that fills in all
+            three at once.
+          </p>
+          <Btn variant="primary" className="mt-3" onClick={onOpenSettings}>
+            Open Text engines
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const groups = groupChats(chats, groupBy);
+
+  return (
+    <div className="flex h-full">
+      {/* The list on the left, in the shape everyone already knows. */}
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-coal/50 md:flex">
+        <div className="border-b border-line p-3">
+          <Btn
+            variant="primary"
+            className="w-full justify-center"
+            onClick={() => {
+              writingTo.current = null;
+              setActiveId(null);
+              setDraft("");
+            }}
+          >
+            <ISparkle size={12} /> New chat
+          </Btn>
+          <div className="mt-2 flex gap-1">
+            {(["date", "model"] as const).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGroupBy(g)}
+                className={`flex-1 rounded-lg border px-2 py-1 font-mono text-[10px] tracking-wide uppercase transition ${
+                  groupBy === g ? "border-ember/60 bg-ember/15 text-cream" : "border-line text-dust hover:text-parch"
+                }`}
+              >
+                by {g}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {groups.length === 0 && <p className="px-1 py-2 text-[11.5px] text-dust">Nothing yet.</p>}
+          {groups.map((g) => (
+            <div key={g.label} className="mb-3">
+              <p className="px-1.5 pb-1 font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">{g.label}</p>
+              {g.items.map((c) => (
+                <div key={c.id} className="group relative">
+                  <button
+                    onClick={() => {
+                      writingTo.current = c.id;
+                      setActiveId(c.id);
+                    }}
+                    className={`w-full truncate rounded-lg px-2 py-1.5 pr-7 text-left text-[12.5px] transition ${
+                      c.id === activeId ? "bg-raise text-cream" : "text-parch hover:bg-raise/50 hover:text-cream"
+                    }`}
+                    title={c.title}
+                  >
+                    {c.title}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setChats((prev) => prev.filter((x) => x.id !== c.id));
+                      if (activeId === c.id) {
+                        writingTo.current = null;
+                        setActiveId(null);
+                      }
+                    }}
+                    title="Delete this chat"
+                    aria-label={`Delete ${c.title}`}
+                    className="absolute top-1/2 right-1 -translate-y-1/2 rounded p-1 text-dust opacity-0 transition group-hover:opacity-100 hover:text-rust focus:opacity-100"
+                  >
+                    <ITrash size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <div ref={shellRef} className="mx-auto flex h-full min-w-0 max-w-3xl flex-1 flex-col p-6">
+      <div className="mb-3">
+        <h1 className="font-display text-2xl text-cream">{active ? active.title : "Chat"}</h1>
+        <p className="mt-1 text-[12.5px] text-dust">
+          One picture at a time. Ask about the app too — it answers from the manual, and says so when it does not know.
+        </p>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        {turns.length === 0 && (
+          <Stagger level={motion} className="space-y-2">
+            {OPENERS.map((o) => (
+              <button
+                key={o}
+                onClick={() => void send(o)}
+                className="w-full rounded-xl border border-line bg-panel/50 p-3 text-left text-[13px] text-parch transition hover:border-ember/50 hover:text-cream"
+              >
+                {o}
+              </button>
+            ))}
+          </Stagger>
+        )}
+
+        {turns.map((t, i) => {
+          const row = t.rowId !== undefined ? rows.find((r) => r.id === t.rowId) : undefined;
+          return (
+            <div key={i} className={t.who === "you" ? "flex justify-end" : ""}>
+              <div
+                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap ${
+                  t.who === "you" ? "bg-raise text-cream" : "border border-line bg-panel/60 text-parch"
+                }`}
+              >
+                {t.text}
+
+                {t.corrections && t.corrections.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-ember/40 bg-ember/10 p-2">
+                    {t.corrections.map((c) => (
+                      <p key={c} className="flex gap-1.5 text-[11.5px] text-parch">
+                        <IAlert size={12} className="mt-0.5 shrink-0 text-ember" />
+                        {c}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {t.plan && (
+                  <ProposalCard
+                    plan={t.plan}
+                    row={row}
+                    busy={forging}
+                    onForge={() => void forge(t.plan!, i)}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {busy && <p className="font-mono text-[11.5px] text-dust">thinking…</p>}
+        <div ref={endRef} />
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send(draft);
+        }}
+        className="mt-3 rounded-xl border border-line bg-[#191310] p-2"
+      >
+        <textarea
+          ref={taRef}
+          rows={3}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends, Shift+Enter makes a new line — the convention
+            // everywhere, and the reason this is a textarea at all.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send(draft);
+            }
+          }}
+          placeholder="describe a picture, or ask about the app…&#10;Enter to send · Shift+Enter for a new line"
+          className="block w-full resize-none bg-transparent px-1.5 py-1 text-[13.5px] leading-relaxed text-cream placeholder:text-dust/60 focus:outline-none"
+        />
+        <div className="mt-1.5 flex items-center gap-2 border-t border-line/60 pt-1.5">
+          <label className="sr-only" htmlFor="chat-model">
+            Which model answers
+          </label>
+          <select
+            id="chat-model"
+            value={chatModel}
+            onChange={(e) => setChatModel(e.target.value)}
+            title="Which text model answers. Switching starts the next chat on it."
+            className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel/60 px-2 py-1.5 font-mono text-[11px] text-parch"
+          >
+            {(modelChoices.length > 0 ? modelChoices : [settings.scribe.model].filter(Boolean)).map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+          <Btn variant="primary" disabled={busy || !draft.trim()}>
+            <ISparkle size={13} /> Send
+          </Btn>
+        </div>
+      </form>
+      </div>
+    </div>
+  );
+}
+
+/** What it wants to make, shown before anything is spent. */
+function ProposalCard({
+  plan,
+  row,
+  busy,
+  onForge,
+}: {
+  plan: ChatPlan;
+  row?: ManifestRow;
+  busy: boolean;
+  onForge: () => void;
+}) {
+  const style = styleById(plan.style);
+  const model = MODELS.find((m) => m.id === plan.model);
+  const free = !model || model.priceUsd === 0 || model.priceUsd === null;
+
+  return (
+    <div className="mt-2.5 rounded-xl border border-line2 bg-[#191310]/70 p-3">
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="rounded-full border border-line px-2 py-0.5 text-parch">{style?.name ?? plan.style}</span>
+        <span className="rounded-full border border-line px-2 py-0.5 text-parch">{plan.aspect}</span>
+        <span className={`rounded-full border px-2 py-0.5 ${free ? "border-moss/50 text-moss" : "border-ember/50 text-ember"}`}>
+          {model?.label ?? plan.model} · {free ? "free" : `$${model?.priceUsd?.toFixed(3)}`}
+        </span>
+      </div>
+      <p className="mt-2 text-[12px] leading-relaxed text-dust italic">“{plan.prompt}”</p>
+
+      {row?.status === "done" && row.preview ? (
+        <div className="mt-2.5">
+          {row.preview.trimStart().startsWith("<svg") ? (
+            <div className="overflow-hidden rounded-lg border border-line" dangerouslySetInnerHTML={{ __html: row.preview }} />
+          ) : (
+            <img src={row.preview} alt={plan.prompt} className="develop w-full rounded-lg border border-line" />
+          )}
+          <p className="mt-1.5 font-mono text-[10.5px] text-moss">✓ made · it is row “{row.filename}” in the manifest</p>
+        </div>
+      ) : row?.status === "failed" ? (
+        <p className="mt-2 text-[12px] text-rust">✗ {row.error || "it did not work"}</p>
+      ) : row ? (
+        <p className="mt-2 font-mono text-[11.5px] text-ember">forging…</p>
+      ) : (
+        <Btn variant="primary" className="mt-2.5" disabled={busy} onClick={onForge}>
+          <IPlay size={12} /> {busy ? "forging…" : free ? "Make it — free" : "Make it"}
+        </Btn>
+      )}
+    </div>
+  );
+}
