@@ -391,6 +391,15 @@ const dimsFor = (aspect) => DIMS[aspect] || DIMS["1:1"];
 /** Turns a provider's raw complaint into something a human can act on. */
 export function explainFailure(status, body, engine) {
   const text = String(body || "").slice(0, 300);
+  // Google reports "no credit" as a 429, which normally means "wait and retry".
+  // Here waiting never helps, so say so — verified against a live free key on
+  // 2026-09-02: image generation needs prepaid credit, there is no free tier.
+  if (/prepayment credits are depleted|billing/i.test(text) && engine === "gemini") {
+    return (
+      "This Google key has no image credit. Google's image models are not free — " +
+      "add prepaid credit at ai.studio, or use Cloudflare or your own machine instead."
+    );
+  }
   if (status === 401 || status === 403) {
     if (/turnstile/i.test(text)) return "Pollinations now requires a token — add a free one in Settings → Engines.";
     if (engine === "gemini") return "Google refused the key. Check it is correct and that billing is switched on.";
@@ -462,7 +471,11 @@ export function geminiRequestBody(row, apiModel, { imageSize = "1K" } = {}) {
   return {
     model: apiModel,
     input: [{ type: "text", text: prompt }],
-    response_format: { type: "image", mime_type: "image/png", aspect_ratio: aspect, image_size: imageSize },
+    // JPEG, not PNG. Google's own examples show "image/png", but the
+    // Interactions API rejects it: "The value 'image/png' is not supported for
+    // 'response_format.mime_type'. Supported values: 'image/jpeg'." Confirmed
+    // against a live account on 2026-09-02.
+    response_format: { type: "image", mime_type: "image/jpeg", aspect_ratio: aspect, image_size: imageSize },
   };
 }
 
@@ -494,8 +507,13 @@ async function gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages) 
         signal
       );
       if (res.status === 429) {
+        const text = await res.text().catch(() => "");
         exhaust(k.pool, k.id, Date.now() + cooldownMs);
-        lastErr = new RateLimitError(`${k.label} hit its limit — trying the next key.`, Date.now() + cooldownMs, k.label);
+        // "No credit" also arrives as a 429, but no amount of waiting fixes it.
+        const noCredit = /prepayment credits are depleted|billing/i.test(text);
+        lastErr = noCredit
+          ? new Error(explainFailure(429, text, "gemini"))
+          : new RateLimitError(`${k.label} hit its limit — trying the next key.`, Date.now() + cooldownMs, k.label);
         continue;
       }
       if (!res.ok) {
@@ -510,7 +528,7 @@ async function gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages) 
       const json = await res.json();
       const b64 = readGeminiImage(json);
       if (!b64) throw new Error("Google replied without an image. The prompt may have been blocked.");
-      return { bytes: b64ToBytes(b64), mime: "image/png" };
+      return { bytes: b64ToBytes(b64), mime: "image/jpeg" };
     } catch (e) {
       if (e instanceof RateLimitError) {
         lastErr = e;
@@ -537,7 +555,10 @@ async function cloudflare(row, apiModel, s, signal, exhaust, cooldownMs) {
       body: JSON.stringify({
         prompt: String(row.prompt).slice(0, 2048),
         steps: Math.min(Math.max(Number(s.cloudflareSteps) || 4, 1), 8),
-        ...(row.seed ? { seed: row.seed } : {}),
+        // No seed. Cloudflare's own model page lists one, but flux-1-schnell
+        // rejects the whole request with "Additional or unevaluated properties
+        // '/seed' at '/' not allowed" — confirmed against a live account on
+        // 2026-09-02. Sending it makes every Cloudflare picture fail.
       }),
     },
     180000,

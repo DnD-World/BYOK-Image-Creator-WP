@@ -266,7 +266,13 @@ describe("generateBytes", () => {
     expect((init.headers as Record<string, string>)["x-goog-api-key"]).toBe("secret-k1");
     const body = JSON.parse(String(init.body));
     expect(body.model).toBe("gemini-3.1-flash-image");
-    expect(body.response_format).toMatchObject({ type: "image", aspect_ratio: "16:9", image_size: "1K" });
+    // JPEG only — the Interactions API rejects image/png outright
+    expect(body.response_format).toMatchObject({
+      type: "image",
+      mime_type: "image/jpeg",
+      aspect_ratio: "16:9",
+      image_size: "1K",
+    });
     expect(bytes).toEqual(png());
   });
 
@@ -352,7 +358,11 @@ describe("generateBytes", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.cloudflare.com/client/v4/accounts/acct1/ai/run/@cf/black-forest-labs/flux-1-schnell");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer cftok");
-    expect(JSON.parse(String(init.body))).toMatchObject({ prompt: "a warm bakery", steps: 4, seed: 42 });
+    const sent = JSON.parse(String(init.body));
+    expect(sent).toMatchObject({ prompt: "a warm bakery", steps: 4 });
+    // Cloudflare rejects the whole request if a seed is present, despite its
+    // own docs listing one. Verified against a live account 2026-09-02.
+    expect(sent).not.toHaveProperty("seed");
     expect(bytes).toEqual(png());
   });
 
@@ -483,5 +493,35 @@ describe("generateBytes", () => {
     await expect(
       generateBytes(row({ model: "gpt-image-1" }), settings({ openaiKeys: [key("k1")] }), undefined, () => {}, 0)
     ).rejects.toThrow(/no longer exists/);
+  });
+});
+
+describe("things only a live account revealed", () => {
+  it("says a Google key has no credit, rather than 'wait and retry'", () => {
+    const body = '{"error":{"message":"Your prepayment credits are depleted. Please go to AI Studio..."}}';
+    const msg = explainFailure(429, body, "gemini");
+    expect(msg).toMatch(/no image credit/i);
+    expect(msg).toMatch(/not free/i);
+    expect(msg).toMatch(/Cloudflare|your own machine/);
+  });
+
+  it("still treats an ordinary Google 429 as something to wait out", () => {
+    expect(explainFailure(429, "quota exceeded for requests per minute", "gemini")).toMatch(/limit/i);
+    expect(explainFailure(429, "quota exceeded for requests per minute", "gemini")).not.toMatch(/no image credit/i);
+  });
+
+  it("asks Google for jpeg, the only format the Interactions API accepts", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ output_image: { data: b64png() } }, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await generateBytes(
+      row({ model: "nano-banana-2" }),
+      settings({ geminiKeys: [key("k1")] }),
+      undefined,
+      () => {},
+      0
+    );
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(body.response_format.mime_type).toBe("image/jpeg");
+    expect(JSON.stringify(body)).not.toContain("image/png");
   });
 });
