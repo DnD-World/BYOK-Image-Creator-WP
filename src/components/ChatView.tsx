@@ -46,6 +46,7 @@ export default function ChatView({
   rows,
   motion,
   onForge,
+  onAddRows,
   onOpenSettings,
   pushToast,
 }: {
@@ -54,6 +55,8 @@ export default function ChatView({
   motion: MotionLevel;
   /** adds a row and runs it; resolves with the row id */
   onForge: (plan: ChatPlan) => Promise<number | null>;
+  /** puts a whole list into the manifest without running it; returns how many */
+  onAddRows: (plans: ChatPlan[]) => Promise<number>;
   onOpenSettings: () => void;
   pushToast: (kind: Toast["kind"], msg: string) => void;
 }) {
@@ -64,6 +67,9 @@ export default function ChatView({
   // "group by model" in the sidebar mean anything.
   const [chatModel, setChatModel] = useState(settings.scribe.model);
   const [modelChoices, setModelChoices] = useState<string[]>([]);
+  // "" means let the chat choose. Anything else overrides it, for when you
+  // already know which engine you want and would rather not argue about it.
+  const [imageModel, setImageModel] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   /**
@@ -180,8 +186,15 @@ export default function ChatView({
           CHAT_SYSTEM(styleListForPrompt(), modelListForPrompt()),
           transcript
         );
-        const { say, plan, corrections } = parseReply(reply, settings);
-        writeTurns((prev) => [...prev, { who: "forge", text: say || "…", plan, corrections }]);
+        const parsed = parseReply(reply, settings);
+        // An explicit choice in the dropdown beats whatever the chat picked.
+        const forced = (p: ChatPlan): ChatPlan => (imageModel ? { ...p, model: imageModel } : p);
+        const plan = parsed.plan ? forced(parsed.plan) : null;
+        const rows = parsed.rows ? parsed.rows.map(forced) : null;
+        writeTurns((prev) => [
+          ...prev,
+          { who: "forge", text: parsed.say || "…", plan, rows, corrections: parsed.corrections },
+        ]);
       } catch (e) {
         const why = (e as { message?: string })?.message ?? "it did not answer";
         writeTurns((prev) => [
@@ -192,7 +205,7 @@ export default function ChatView({
         setBusy(false);
       }
     },
-    [busy, settings, turns, writeTurns, chatModel]
+    [busy, settings, turns, writeTurns, chatModel, imageModel]
   );
 
   const forge = useCallback(
@@ -210,6 +223,22 @@ export default function ChatView({
       }
     },
     [onForge, pushToast, writeTurns]
+  );
+
+  const addMany = useCallback(
+    async (plans: ChatPlan[], turnIndex: number) => {
+      setForging(true);
+      try {
+        const n = await onAddRows(plans);
+        writeTurns((prev) => prev.map((t, i) => (i === turnIndex ? { ...t, addedCount: n } : t)));
+        pushToast("ok", `${n} row${n > 1 ? "s" : ""} added to the manifest. Press Run queue when you are ready.`);
+      } catch (e) {
+        pushToast("err", (e as { message?: string })?.message ?? "could not add those");
+      } finally {
+        setForging(false);
+      }
+    },
+    [onAddRows, pushToast, writeTurns]
   );
 
   if (!ready) {
@@ -360,6 +389,15 @@ export default function ChatView({
                     onForge={() => void forge(t.plan!, i)}
                   />
                 )}
+
+                {t.rows && t.rows.length > 0 && (
+                  <BatchCard
+                    rows={t.rows}
+                    added={t.addedCount}
+                    busy={forging}
+                    onAdd={() => void addMany(t.rows!, i)}
+                  />
+                )}
               </div>
             </div>
           );
@@ -409,12 +447,86 @@ export default function ChatView({
               </option>
             ))}
           </select>
+          <label className="sr-only" htmlFor="image-model">
+            Which engine paints
+          </label>
+          <select
+            id="image-model"
+            value={imageModel}
+            onChange={(e) => setImageModel(e.target.value)}
+            title="Which engine paints the picture. Leave on “chat decides” and it will pick one that suits the style, preferring free."
+            className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel/60 px-2 py-1.5 font-mono text-[11px] text-parch"
+          >
+            <option value="">chat decides the engine</option>
+            {MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label} {m.priceUsd ? `· $${m.priceUsd.toFixed(3)}` : "· free"}
+              </option>
+            ))}
+          </select>
           <Btn variant="primary" disabled={busy || !draft.trim()}>
             <ISparkle size={13} /> Send
           </Btn>
         </div>
       </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A whole list, when many were asked for at once.
+ *
+ * Deliberately does NOT run them. Forty pictures is exactly when you want to
+ * read the list first, change your mind about three of them, and press Run
+ * yourself — not discover afterwards what it decided to spend.
+ */
+function BatchCard({
+  rows,
+  added,
+  busy,
+  onAdd,
+}: {
+  rows: ChatPlan[];
+  added?: number;
+  busy: boolean;
+  onAdd: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const model = MODELS.find((m) => m.id === rows[0]?.model);
+  const each = model?.priceUsd ?? 0;
+  const total = each * rows.length;
+
+  return (
+    <div className="mt-2.5 rounded-xl border border-line2 bg-[#191310]/70 p-3">
+      <p className="text-[12.5px] text-cream">
+        {rows.length} pictures{" "}
+        <span className="text-dust">
+          · {styleById(rows[0].style)?.name ?? rows[0].style} · {model?.label ?? rows[0].model}
+        </span>
+      </p>
+      <p className="mt-1 text-[11.5px] text-dust">
+        {total > 0 ? `About $${total.toFixed(2)} to make them all — you will be asked before anything is spent.` : "Free to make."}
+      </p>
+
+      <button onClick={() => setOpen((o) => !o)} className="mt-1.5 text-[11.5px] text-ember underline">
+        {open ? "hide the list" : "read the list first"}
+      </button>
+      {open && (
+        <ol className="mt-1.5 max-h-56 list-decimal overflow-y-auto pl-5 text-[11.5px] leading-relaxed text-dust">
+          {rows.map((r, i) => (
+            <li key={i}>{r.prompt}</li>
+          ))}
+        </ol>
+      )}
+
+      {added !== undefined ? (
+        <p className="mt-2 font-mono text-[10.5px] text-moss">✓ {added} added to the manifest — press Run queue there</p>
+      ) : (
+        <Btn className="mt-2.5" disabled={busy} onClick={onAdd}>
+          {busy ? "adding…" : "Add all to the manifest"}
+        </Btn>
+      )}
     </div>
   );
 }

@@ -17,8 +17,12 @@ export interface StoredTurn {
   who: "you" | "forge";
   text: string;
   plan?: ChatPlan | null;
+  /** a whole list of pictures, when many were asked for at once */
+  rows?: ChatPlan[] | null;
   corrections?: string[];
   rowId?: number;
+  /** how many of a list have been put into the manifest */
+  addedCount?: number;
 }
 
 export interface Conversation {

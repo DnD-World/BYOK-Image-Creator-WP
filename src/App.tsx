@@ -1186,6 +1186,43 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     [runQueue]
   );
 
+  /**
+   * A whole list from the chat, into the manifest.
+   *
+   * Deliberately does not run them. Forty pictures is exactly the moment you
+   * want to read the list, change your mind about three, and press Run
+   * yourself — rather than find out afterwards what was spent.
+   */
+  const addRowsFromChat = useCallback(async (plans: ChatPlan[]): Promise<number> => {
+    const taken = [...rowsRef.current.map((r) => r.filename)];
+    let nextId = rowsRef.current.reduce((m, r) => Math.max(m, r.id), 0);
+    const made: ManifestRow[] = plans.map((plan) => {
+      nextId += 1;
+      const filename = filenameFor(plan.prompt, "item", taken);
+      taken.push(filename);
+      return {
+        id: nextId,
+        filename,
+        prompt: plan.prompt,
+        category: "item",
+        item_id: "",
+        shop_id: "",
+        event_id: "",
+        style: plan.style,
+        aspect_ratio: plan.aspect,
+        seed: Math.floor(Math.random() * 98) + 1,
+        model: plan.model,
+        status: "pending",
+        error: "",
+        generated_at: "",
+        imported_attachment_id: "",
+      };
+    });
+    setRows((prev) => [...prev, ...made]);
+    pushLog(`✎ ${made.length} row${made.length > 1 ? "s" : ""} written by the chat`, "ok");
+    return made.length;
+  }, [pushLog]);
+
   const checkForUpdate = useCallback(async () => {
     // The app knows where it came from. Asking the user to type the owner and
     // repo before it would even look was a pointless gate — their setting
@@ -1761,6 +1798,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               rows={rows}
               motion={motionLevel}
               onForge={forgeFromChat}
+              onAddRows={addRowsFromChat}
               onOpenSettings={() => nav("settings", "text")}
               pushToast={pushToast}
             />

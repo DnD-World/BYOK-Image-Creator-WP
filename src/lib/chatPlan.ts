@@ -29,6 +29,8 @@ export interface ParsedReply {
   /** what to show in the conversation, with the machine line removed */
   say: string;
   plan: ChatPlan | null;
+  /** a whole list of pictures, when asked for many at once */
+  rows: ChatPlan[] | null;
   /** anything we had to correct, in plain words, for the user to see */
   corrections: string[];
 }
@@ -55,25 +57,11 @@ export const modelListForPrompt = (): string =>
  * A reply with no FORGE line is perfectly normal — it means the model is still
  * asking a question, or answering one about the app.
  */
-export function parseReply(reply: string, settings: ForgeSettings): ParsedReply {
-  const line = reply.match(/^FORGE:\s*(\{[\s\S]*?\})\s*$/m);
-  const say = (line ? reply.slice(0, line.index).trim() : reply).trim();
-  if (!line) return { say, plan: null, corrections: [] };
-
-  let raw: Record<string, unknown>;
-  try {
-    raw = JSON.parse(line[1]) as Record<string, unknown>;
-  } catch {
-    // It meant to propose something and mangled the JSON. Better to keep the
-    // words and drop the plan than to guess at what it intended.
-    return { say, plan: null, corrections: ["It tried to suggest a picture but garbled it. Ask again."] };
-  }
-
-  const corrections: string[] = [];
+/** Check one proposal against the real catalogue. Never trusts a field. */
+function validate(raw: Record<string, unknown>, settings: ForgeSettings, corrections: string[]): ChatPlan | null {
   const prompt = String(raw.prompt ?? "").trim();
-  if (!prompt) return { say, plan: null, corrections: ["It suggested a picture with no prompt, so nothing was made."] };
+  if (!prompt) return null;
 
-  // --- style ---
   let style = String(raw.style ?? "").trim();
   let entry = styleById(style);
   if (!entry) {
@@ -87,24 +75,14 @@ export function parseReply(reply: string, settings: ForgeSettings): ParsedReply 
     );
   }
 
-  // --- aspect ---
   const askedAspect = String(raw.aspect ?? "").trim();
   let aspect: AspectKey = FALLBACK_ASPECT;
-  if (ASPECTS.includes(askedAspect as AspectKey)) {
-    aspect = askedAspect as AspectKey;
-  } else if (askedAspect) {
-    corrections.push(`"${askedAspect}" is not a shape the forge knows, so ${FALLBACK_ASPECT} was used.`);
-  }
+  if (ASPECTS.includes(askedAspect as AspectKey)) aspect = askedAspect as AspectKey;
+  else if (askedAspect) corrections.push(`"${askedAspect}" is not a shape the forge knows, so ${FALLBACK_ASPECT} was used.`);
 
-  // --- model ---
-  // availableModelsForStyle is settings-aware: it only returns engines this
-  // user has actually configured, so the chat cannot propose Cloudflare to
-  // someone who never entered a token.
   let model = String(raw.model ?? "").trim();
-  const known = liveModelIds();
   const allowed = availableModelsForStyle(entry, settings);
-
-  if (!known.has(model)) {
+  if (!liveModelIds().has(model)) {
     const invented = model;
     model = defaultModelForStyle(entry, settings);
     corrections.push(
@@ -113,15 +91,55 @@ export function parseReply(reply: string, settings: ForgeSettings): ParsedReply 
         : `No model was chosen, so ${model} was used.`
     );
   } else if (allowed.length > 0 && !allowed.includes(model)) {
-    // A model that exists but cannot do this style is the costlier mistake:
-    // asking a model that cannot spell for an infographic wastes a real
-    // request, and on a paid engine, real money.
     const wanted = model;
     model = defaultModelForStyle(entry, settings);
     corrections.push(`${wanted} cannot do the "${entry.name}" style, so ${model} was used instead.`);
   }
 
-  return { say, plan: { style, model, prompt, aspect }, corrections };
+  return { style, model, prompt, aspect };
+}
+
+export function parseReply(reply: string, settings: ForgeSettings): ParsedReply {
+  const corrections: string[] = [];
+
+  // ROWS first: a list of pictures for the manifest. This is the bulk job the
+  // Scribe used to do behind a button nobody could find.
+  const many = reply.match(/^ROWS:\s*(\[[\s\S]*?\])\s*$/m);
+  if (many) {
+    const say = reply.slice(0, many.index).trim();
+    let list: unknown;
+    try {
+      list = JSON.parse(many[1]);
+    } catch {
+      return { say, plan: null, rows: null, corrections: ["It tried to write a list of pictures and garbled it. Ask again."] };
+    }
+    if (!Array.isArray(list) || list.length === 0) {
+      return { say, plan: null, rows: null, corrections: ["It returned an empty list, so nothing was added."] };
+    }
+    const rows = list
+      .map((r) => validate((r ?? {}) as Record<string, unknown>, settings, corrections))
+      .filter((r): r is ChatPlan => r !== null);
+    const dropped = list.length - rows.length;
+    if (dropped > 0) corrections.push(`${dropped} of ${list.length} had no prompt and were skipped.`);
+    return { say, plan: null, rows: rows.length > 0 ? rows : null, corrections };
+  }
+
+  const line = reply.match(/^FORGE:\s*(\{[\s\S]*?\})\s*$/m);
+  const say = (line ? reply.slice(0, line.index) : reply).trim();
+  if (!line) return { say, plan: null, rows: null, corrections: [] };
+
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(line[1]) as Record<string, unknown>;
+  } catch {
+    // It meant to propose something and mangled the JSON. Better to keep the
+    // words and drop the plan than to guess at what it intended.
+    return { say, plan: null, rows: null, corrections: ["It tried to suggest a picture but garbled it. Ask again."] };
+  }
+
+  const plan = validate(raw, settings, corrections);
+  if (!plan) return { say, plan: null, rows: null, corrections: ["It suggested a picture with no prompt, so nothing was made."] };
+  return { say, plan, rows: null, corrections };
 }
 
 /** A filename that obeys the seven rules, derived from what was asked for. */
