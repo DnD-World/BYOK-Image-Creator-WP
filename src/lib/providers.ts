@@ -87,6 +87,8 @@ export interface ForgeSettings {
   suppressTextOnWeakModels: boolean;
   /** rewrite each prompt to suit the model, using your text engine. Off unless you ask. */
   tailorPrompts: boolean;
+  /** ask before anything that costs money. On, and it should stay on. */
+  confirmPaidRuns: boolean;
   /** how many images to draw at once; 1 = one at a time, as it has always been */
   concurrency: number;
   /** batch jobs sent to Google that have not been collected yet */
@@ -138,6 +140,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   localTextQuality: "poor",
   suppressTextOnWeakModels: true,
   tailorPrompts: false,
+  confirmPaidRuns: true,
   concurrency: 1,
   batchJobs: [],
   storageWarnAtPct: 70,

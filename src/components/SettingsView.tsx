@@ -5,6 +5,7 @@ import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
 import { testConnection, type TestResult, type TestTarget } from "../lib/testConnection";
+import { WHY_MANUAL_DATE, creditNoteFor } from "../lib/paidGuard";
 import {
   STYLE_CATALOGUE,
   STYLE_GROUPS,
@@ -94,6 +95,7 @@ function KeyPoolEditor({
   pushToast,
   test,
   settings,
+  credits,
 }: {
   title: string;
   hint: string;
@@ -102,6 +104,8 @@ function KeyPoolEditor({
   pushToast: (kind: Toast["kind"], msg: string) => void;
   test?: TestTarget;
   settings?: ForgeSettings;
+  /** show a credit label and end date beside each key — for paid pools */
+  credits?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   return (
@@ -156,6 +160,43 @@ function KeyPoolEditor({
           Add key
         </Btn>
       </div>
+      {credits && (
+        <div className="mt-3 space-y-2 rounded-lg border border-line bg-[#191310] p-3">
+          <p className="font-mono text-[10px] tracking-[0.2em] text-dust uppercase">when does each credit run out?</p>
+          {pool
+            .filter((k) => k.key.trim())
+            .map((k, i) => {
+              const note = creditNoteFor(k);
+              return (
+                <div key={k.id} className="flex flex-wrap items-center gap-2">
+                  <span className="w-14 shrink-0 font-mono text-[10px] text-dust">#{i + 1}</span>
+                  <input
+                    value={k.creditLabel ?? ""}
+                    onChange={(e) => onChange(pool.map((x) => (x.id === k.id ? { ...x, creditLabel: e.target.value } : x)))}
+                    placeholder="what is this credit?"
+                    className={`${field} !w-auto min-w-[9rem] flex-1 !py-1.5 !text-[12px]`}
+                  />
+                  <input
+                    type="date"
+                    value={k.creditEndsOn ?? ""}
+                    onChange={(e) => onChange(pool.map((x) => (x.id === k.id ? { ...x, creditEndsOn: e.target.value } : x)))}
+                    className={`${field} !w-auto !py-1.5 !text-[12px]`}
+                  />
+                  {note.endsOn && (
+                    <span
+                      className={`font-mono text-[10px] ${
+                        note.expired ? "text-blood" : note.endingSoon ? "text-ember" : "text-moss"
+                      }`}
+                    >
+                      {note.expired ? "expired" : `${note.daysLeft}d left`}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          <p className="text-[11px] leading-snug text-dust">{WHY_MANUAL_DATE}</p>
+        </div>
+      )}
       {test && settings && <TestButton target={test} settings={settings} label="Check the first key" />}
       <p className="mt-2 text-[11px] text-dust">
         On a 429 the current key rests and the next one retries the same row immediately. A row parks only when every key is resting.
@@ -468,6 +509,7 @@ export default function SettingsView({
               pushToast={pushToast}
               test="gemini-paid"
               settings={settings}
+              credits
             />
             <div className="rounded-xl border border-line bg-panel/50 p-4">
               <div className="grid gap-3 sm:grid-cols-2">

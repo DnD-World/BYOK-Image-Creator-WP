@@ -39,6 +39,8 @@ import { factoryToRows, loadBatches, loadSetups, saveBatches, saveSetups, uid } 
 import { measureStorage, safeSet, storageWarning, type SaveResult } from "./lib/storage";
 import { tailorPrompt } from "./lib/promptTailor";
 import { styleById } from "./lib/styleCatalogue";
+import { checkPaidRun, type PaidRunCheck } from "./lib/paidGuard";
+import PaidConfirm from "./components/PaidConfirm";
 import { checkBatch, collectBatch, describeJob, submitBatch } from "./lib/geminiBatch.mjs";
 import {
   clearTauriFolder,
@@ -139,6 +141,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [textFor, setTextFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [vectorOpen, setVectorOpen] = useState(false);
+  const [paidAsk, setPaidAsk] = useState<null | { check: PaidRunCheck; targets: number[] }>(null);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -439,10 +442,23 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   );
 
   const runQueue = useCallback(
-    async (targets?: number[]) => {
+    async (targets?: number[], approvedCost = false) => {
       if (isRunning) return;
       const ids = targets ?? rowsRef.current.filter((r) => r.status === "pending" || r.status === "failed").map((r) => r.id);
       if (ids.length === 0) return;
+
+      // Nothing spends money without being asked. Free engines never get here.
+      if (!approvedCost && settingsRef.current.confirmPaidRuns) {
+        const about = ids
+          .map((id) => rowsRef.current.find((r) => r.id === id))
+          .filter((r): r is ManifestRow => Boolean(r));
+        const check = checkPaidRun(about, settingsRef.current);
+        if (check.costs) {
+          setPaidAsk({ check, targets: ids });
+          return;
+        }
+      }
+
       stopRef.current = false;
       setIsRunning(true);
 
@@ -1632,6 +1648,29 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             }
           }}
           pushToast={pushToast}
+        />
+      )}
+
+      {paidAsk && (
+        <PaidConfirm
+          check={paidAsk.check}
+          onCancel={() => setPaidAsk(null)}
+          onApprove={() => {
+            const t = paidAsk.targets;
+            const spend = formatUsd(paidAsk.check.totalUsd);
+            const on = paidAsk.check.model;
+            setPaidAsk(null);
+            pushLog(`⚑ you approved about ${spend} on ${on}`, "info");
+            void runQueue(t, true);
+          }}
+          onUseFree={(engineId) => {
+            const t = paidAsk.targets;
+            setPaidAsk(null);
+            patchSettings({ provider: engineId as ForgeSettings["provider"] });
+            pushLog(`↪ switched to ${engineId} instead — this run is free`, "ok");
+            // let the new engine settle into state before running
+            setTimeout(() => void runQueue(t, true), 60);
+          }}
         />
       )}
 

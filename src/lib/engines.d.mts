@@ -8,6 +8,10 @@ export interface ApiKey {
   key: string;
   /** epoch ms until which this key is benched after a 429; 0 = healthy */
   exhaustedUntil: number;
+  /** ISO date this key's credit runs out — typed in by you, since Google publishes no way to read it */
+  creditEndsOn?: string;
+  /** what you call this credit, e.g. "tier 1 voucher" */
+  creditLabel?: string;
 }
 
 export interface ModelDef {
