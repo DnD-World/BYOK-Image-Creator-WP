@@ -262,6 +262,95 @@ function KeyPoolEditor({
 }
 
 /**
+ * One key, three jobs.
+ *
+ * The forge needs three different kinds of model — one to write, one to write
+ * code, one to look at pictures — and it is easy to end up with the writer
+ * still pointing at a provider you have no key for. Mistral serves all three
+ * from a single free key, and every model named here was confirmed present on
+ * a live account on 2026-09-02, so this is not a guess at what exists.
+ */
+function OneKeyForAll({
+  settings,
+  patchSettings,
+  pushToast,
+}: {
+  settings: ForgeSettings;
+  patchSettings: (patch: Partial<ForgeSettings>) => void;
+  pushToast: (kind: Toast["kind"], message: string) => void;
+}) {
+  const MISTRAL = "https://api.mistral.ai/v1";
+  const jobs = [
+    { name: "writing", of: settings.scribe },
+    { name: "code", of: settings.coder },
+    { name: "vision", of: settings.vision },
+  ];
+  const ready = jobs.filter((j) => j.of.key.trim());
+  const missing = jobs.filter((j) => !j.of.key.trim());
+  // Any key already pasted into one of the three, preferring a Mistral one.
+  const known =
+    jobs.find((j) => j.of.key.trim() && j.of.base.includes("mistral"))?.of.key ?? jobs.find((j) => j.of.key.trim())?.of.key ?? "";
+
+  const applyAll = () => {
+    patchSettings({
+      scribe: { base: MISTRAL, key: known, model: "mistral-medium-latest" },
+      coder: { base: MISTRAL, key: known, model: "codestral-latest" },
+      vision: { base: MISTRAL, key: known, model: "mistral-medium-latest" },
+    });
+    pushToast("ok", "All three text jobs now run on your Mistral key. Test each one below.");
+  };
+
+  if (missing.length === 0 && ready.every((j) => j.of.base.includes("mistral"))) {
+    return (
+      <div className="rounded-xl border border-moss/40 bg-moss/10 p-4">
+        <p className="text-[13px] text-cream">
+          <span className="font-display text-[15px]">All three set up on one key.</span> Writing, code and vision are
+          all running on Mistral. Nothing else to do here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-ember/40 bg-ember/10 p-4">
+      <p className="font-display text-[15px] tracking-wide text-cream">One key for all three</p>
+      <p className="mt-1 text-[12px] text-parch">
+        The forge uses three different models: one to <span className="text-cream">write</span>, one to write{" "}
+        <span className="text-cream">code</span> (for SVG and Lottie), and one that can{" "}
+        <span className="text-cream">see</span> (to place lettering). Mistral serves all three from a single free key.
+      </p>
+      <ul className="mt-2 space-y-1 text-[12px]">
+        {jobs.map((j) => (
+          <li key={j.name} className={j.of.key.trim() ? "text-moss" : "text-rust"}>
+            {j.of.key.trim() ? "✓" : "·"} {j.name}
+            {j.of.key.trim() ? ` — ${j.of.model || "no model chosen"}` : " — no key yet"}
+          </li>
+        ))}
+      </ul>
+      {known ? (
+        <>
+          <Btn variant="primary" className="mt-3" onClick={applyAll}>
+            Use that one key for all three
+          </Btn>
+          <p className="mt-2 text-[11px] text-dust">
+            Sets writing and vision to <span className="font-mono text-cream">mistral-medium-latest</span> and code to{" "}
+            <span className="font-mono text-cream">codestral-latest</span>. You can change any of them afterwards.
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-[12px] text-dust">
+          Paste a Mistral key into any one of the three boxes below and this will offer to fill in the other two.{" "}
+          <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noreferrer" className="text-ember underline">
+            Get a free one
+          </a>
+          .
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The vision engine — a model that can LOOK at a picture.
  *
  * Deliberately not a fixed dropdown of model names. Providers rename and retire
@@ -1135,6 +1224,8 @@ export default function SettingsView({
                 <span className="font-mono text-cream">/chat/completions</span> works — OpenAI, OpenRouter, Together, a local LLM.
               </P>
             </div>
+            <OneKeyForAll settings={settings} patchSettings={patchSettings} pushToast={pushToast} />
+
             <div className="grid gap-3 sm:grid-cols-[1fr_1fr_150px]">
               <div>
                 <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">base URL</label>
