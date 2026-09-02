@@ -13,6 +13,7 @@ import {
   type TestTarget,
 } from "../lib/testConnection";
 import { WHY_MANUAL_DATE, creditNoteFor } from "../lib/paidGuard";
+import { VISION_PRESETS, listChatModels } from "../lib/visionEngine";
 import {
   STYLE_CATALOGUE,
   STYLE_GROUPS,
@@ -256,6 +257,207 @@ function KeyPoolEditor({
       <p className="mt-2 text-[11px] text-dust">
         On a 429 the current key rests and the next one retries the same row immediately. A row parks only when every key is resting.
       </p>
+    </div>
+  );
+}
+
+/**
+ * The vision engine — a model that can LOOK at a picture.
+ *
+ * Deliberately not a fixed dropdown of model names. Providers rename and retire
+ * models faster than this app ships, and a stale name baked into our code turns
+ * into the user's 404. So: presets fill in an address, and "Load models" asks
+ * the endpoint what it really has today.
+ */
+function VisionEngineBox({
+  settings,
+  patchSettings,
+}: {
+  settings: ForgeSettings;
+  patchSettings: (patch: Partial<ForgeSettings>) => void;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const v = settings.vision;
+  const setV = (patch: Partial<ForgeSettings["vision"]>) => patchSettings({ vision: { ...v, ...patch } });
+
+  const preset = VISION_PRESETS.find((p) => p.base === v.base);
+  const hostOf = (u: string) => {
+    try {
+      return new URL(u).host;
+    } catch {
+      return "";
+    }
+  };
+  const sameHost = hostOf(v.base) !== "" && hostOf(v.base) === hostOf(settings.coder.base);
+
+  const load = async () => {
+    setBusy(true);
+    setNote("");
+    setModels([]);
+    const r = await listChatModels(v);
+    if (r.ok) {
+      // Most endpoints serve hundreds of models, nearly all of them text-only.
+      // Float the ones whose names suggest they can see, but keep the rest —
+      // naming is a hint, not a guarantee, and guessing wrong would hide the
+      // very model the user came for.
+      const looksVisual = (m: string) => /vision|vl|pixtral|omni|multimodal|image|4o|glimmer|mistral-medium|mistral-small|magistral/i.test(m);
+      const sorted = [...r.models].sort((a, b) => Number(looksVisual(b)) - Number(looksVisual(a)));
+      setModels(sorted);
+      const n = r.models.filter(looksVisual).length;
+      setNote(`${r.models.length} models on this endpoint${n ? ` · ${n} look like they can see pictures, listed first` : ""}.`);
+    } else {
+      setNote(r.problem);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-line bg-panel/50 p-4">
+      <p className="font-display text-[15px] tracking-wide text-cream">
+        Vision engine <span className="ml-1 font-mono text-[10px] text-dust">a model that can look at a picture</span>
+      </p>
+      <p className="mt-1 text-[12px] text-dust">
+        Used by the <span className="text-cream">Letterer</span> to find where a caption belongs — “put it on the
+        signboard” only works if something can see the signboard. Any endpoint that speaks the OpenAI chat shape will
+        do, so you are not tied to one company.
+      </p>
+      <p className="mt-1 text-[12px] text-dust">
+        Without it nothing breaks: the Letterer falls back to finding the quietest patch of the picture, free and
+        instantly, and you drag the corners yourself.
+      </p>
+
+      <div className="mt-3">
+        <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">start from</label>
+        <div className="flex flex-wrap gap-2">
+          {VISION_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                setV({ base: p.base, model: p.model });
+                setModels([]);
+                setNote("");
+              }}
+              className={`rounded-lg border px-3 py-1.5 text-[12px] transition ${
+                preset?.id === p.id ? "border-ember bg-ember/15 text-cream" : "border-line text-dust hover:text-cream"
+              }`}
+            >
+              {p.label}
+              {p.free && <span className="ml-1.5 font-mono text-[9.5px] text-moss">free</span>}
+            </button>
+          ))}
+        </div>
+        {preset && (
+          <p className="mt-2 text-[11.5px] text-dust">
+            {preset.note}
+            {preset.keyUrl && (
+              <>
+                {" "}
+                <a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-ember underline">
+                  Get a key
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">address</label>
+          <input value={v.base} onChange={(e) => setV({ base: e.target.value.trim() })} placeholder="https://api.mistral.ai/v1" className={field} />
+        </div>
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">key</label>
+          <input type="password" value={v.key} onChange={(e) => setV({ key: e.target.value.trim() })} placeholder="paste your key" className={field} />
+        </div>
+        <div>
+          <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">model</label>
+          <input
+            value={v.model}
+            onChange={(e) => setV({ model: e.target.value.trim() })}
+            placeholder="mistral-medium-latest"
+            list="vision-models"
+            className={field}
+          />
+          <datalist id="vision-models">
+            {models.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </div>
+      </div>
+
+      {/* Mistral serves the code model and the vision model from one key, so there is
+          no reason to make anyone paste the same string twice. */}
+      {!v.key.trim() && settings.coder.key.trim() && (
+        <button
+          onClick={() => setV({ key: settings.coder.key })}
+          className="mt-2 rounded-lg border border-moss/50 bg-moss/10 px-3 py-1.5 text-[12px] text-cream transition hover:bg-moss/20"
+        >
+          Use the same key as the code engine
+          {sameHost && <span className="ml-1.5 font-mono text-[10px] text-moss">same provider — it will work</span>}
+        </button>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Btn onClick={load} disabled={busy || !v.base.trim()}>
+          {busy ? "asking…" : "Load models"}
+        </Btn>
+        <TestButton target="vision" settings={settings} label="Test the vision engine" />
+      </div>
+      {note && <p className="mt-2 text-[11.5px] text-dust">{note}</p>}
+      {models.length > 0 && (
+        <p className="mt-1 text-[11px] text-dust">
+          Click the model box above to pick from the list, or keep typing to filter it.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Switch an engine off without dismantling it.
+ *
+ * A provider having a bad month should not cost you your key setup. Paused
+ * rows fail instantly with a sentence naming the reason, which is far kinder
+ * than a queue of timeouts.
+ */
+function PauseSwitch({
+  engine,
+  label,
+  note,
+  settings,
+  patchSettings,
+}: {
+  engine: string;
+  label: string;
+  note: string;
+  settings: ForgeSettings;
+  patchSettings: (patch: Partial<ForgeSettings>) => void;
+}) {
+  const paused = settings.pausedEngines.includes(engine);
+  const toggle = () =>
+    patchSettings({
+      pausedEngines: paused
+        ? settings.pausedEngines.filter((e) => e !== engine)
+        : [...settings.pausedEngines, engine],
+    });
+
+  return (
+    <div className={`rounded-xl border p-4 ${paused ? "border-rust/60 bg-rust/10" : "border-line bg-panel/50"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-display text-[15px] tracking-wide text-cream">
+            {label} {paused && <span className="ml-1 font-mono text-[10px] text-rust">PAUSED</span>}
+          </p>
+          <p className="mt-1 max-w-2xl text-[12px] text-dust">{note}</p>
+        </div>
+        <Btn variant={paused ? "primary" : undefined} onClick={toggle}>
+          {paused ? `Switch ${label} back on` : `Pause ${label}`}
+        </Btn>
+      </div>
     </div>
   );
 }
@@ -546,6 +748,14 @@ export default function SettingsView({
               </div>
               <TestButton target="pollinations" settings={settings} label="Check the token" />
             </div>
+
+            <PauseSwitch
+              engine="gemini"
+              label="Google"
+              settings={settings}
+              patchSettings={patchSettings}
+              note="Paused means rows routed to Google stop immediately with a plain message, instead of spending thirty seconds each proving the account still has no credit. Your keys and settings are kept exactly as they are."
+            />
 
             <KeyPoolEditor
               title="Google keys — FREE accounts"
@@ -998,6 +1208,8 @@ export default function SettingsView({
                 </p>
               )}
             </div>
+
+            <VisionEngineBox settings={settings} patchSettings={patchSettings} />
           </>
         )}
 

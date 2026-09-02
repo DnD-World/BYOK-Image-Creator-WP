@@ -12,6 +12,7 @@
 import type { ForgeSettings } from "./providers";
 import { scribeChat } from "./providers";
 import { cloudflareUrl, inBrowser } from "./engines.mjs";
+import { askVision, type VisionEngine } from "./visionEngine";
 
 export type TestTarget =
   | "local"
@@ -21,7 +22,8 @@ export type TestTarget =
   | "gemini-paid"
   | "openai"
   | "scribe"
-  | "coder";
+  | "coder"
+  | "vision";
 
 export interface TestResult {
   ok: boolean;
@@ -256,6 +258,52 @@ async function testChat(engine: ForgeSettings["scribe"], who: string): Promise<T
 
 /* ---------------- the one entry point ---------------- */
 
+/**
+ * Vision is the one check that must send a real picture.
+ *
+ * Listing models proves nothing here: plenty of endpoints list a vision model
+ * that their key is not entitled to use, and plenty of models accept a text
+ * message and then reject an image. So we send a tiny generated square — a red
+ * block, four pixels — and ask what colour it is. It costs a fraction of a
+ * cent at worst, and it proves the whole chain end to end.
+ */
+export async function testVision(engine: VisionEngine): Promise<TestResult> {
+  if (!engine.base.trim()) return bad("No address set for the vision engine.");
+  // A 64x64 solid red PNG, 136 bytes, checked byte for byte by a test below.
+  // Written out as a constant so the check needs no canvas and behaves the same
+  // in Node as in the browser. 64 square rather than a few pixels because some
+  // providers reject images under a minimum size before a model ever sees them.
+  const RED_SQUARE =
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsEty/UMZxgi+" +
+    "hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywLPLIEA" +
+    "68ZURwAAAABJRU5ErkJggg==";
+
+  const res = await askVision(
+    engine,
+    RED_SQUARE,
+    "What single colour fills this image? Reply with just the colour name, one word.",
+    timeout(30_000)
+  );
+
+  if (!res.ok) return bad(capitalise(res.problem));
+
+  const answer = res.text.trim().toLowerCase();
+  if (answer.includes("red"))
+    return ok(`${engine.model || "The model"} can see pictures.`, `It read the test square as: "${res.text.trim().slice(0, 60)}"`, false);
+
+  // It answered, so the key and the model are fine — it just got it wrong.
+  // Worth flagging, because a model that cannot read a solid red square will
+  // not find a signboard either.
+  return {
+    ok: false,
+    message: `${engine.model || "The model"} replied, but did not see the picture properly.`,
+    detail: `Asked what colour a solid red square was, it said: "${res.text.trim().slice(0, 80)}". Press Load models and pick one built for vision.`,
+    free: false,
+  };
+}
+
+const capitalise = (t: string) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+
 export async function testConnection(target: TestTarget, s: ForgeSettings): Promise<TestResult> {
   switch (target) {
     case "local":
@@ -274,6 +322,8 @@ export async function testConnection(target: TestTarget, s: ForgeSettings): Prom
       return testChat(s.scribe, "your text model");
     case "coder":
       return testChat(s.coder, "your code model");
+    case "vision":
+      return testVision(s.vision);
     default:
       return bad("Nothing to test.");
   }

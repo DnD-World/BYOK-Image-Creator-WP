@@ -98,6 +98,19 @@ export interface ForgeSettings {
   scribe: { base: string; key: string; model: string };
   /** a model for writing CODE — SVG, Lottie JSON. Codestral is built for this. */
   coder: { base: string; key: string; model: string };
+  /**
+   * A model that can LOOK at a picture — used to find where a caption belongs.
+   * Any OpenAI-compatible endpoint that accepts an image_url part will do, so
+   * this is not tied to one company. It defaults to Mistral because that is
+   * free on their tier and needs no card.
+   */
+  vision: { base: string; key: string; model: string };
+  /**
+   * Engines switched off by hand. A provider having a bad month should not
+   * cost you your key setup, and should not cost you thirty seconds per row
+   * proving it is still broken.
+   */
+  pausedEngines: string[];
   cooldowns: Record<string, number>;
   usage: Record<string, { day: string; used: number }>;
   writeCsvOnSync: boolean;
@@ -146,6 +159,8 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   storageWarnAtPct: 70,
   scribe: { base: "https://api.openai.com/v1", key: "", model: "gpt-4o-mini" },
   coder: { base: "https://api.mistral.ai/v1", key: "", model: "codestral-latest" },
+  vision: { base: "https://api.mistral.ai/v1", key: "", model: "mistral-medium-latest" },
+  pausedEngines: [],
   cooldowns: {},
   usage: {},
   writeCsvOnSync: true,
@@ -181,6 +196,8 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     concurrency: Math.min(Math.max(Number(s.concurrency) || 1, 1), 8),
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
     coder: { ...DEFAULT_SETTINGS.coder, ...(s.coder ?? {}) },
+    vision: { ...DEFAULT_SETTINGS.vision, ...(s.vision ?? {}) },
+    pausedEngines: Array.isArray(s.pausedEngines) ? s.pausedEngines : [],
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },
     wp: { ...DEFAULT_SETTINGS.wp, ...(s.wp ?? {}) },

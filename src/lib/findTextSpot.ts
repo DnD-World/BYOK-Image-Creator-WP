@@ -13,6 +13,7 @@
  */
 
 import type { ForgeSettings } from "./providers";
+import { askVision, jsonFromReply } from "./visionEngine";
 import { quadFromRect, type Quad } from "./warp";
 
 /* ---------------- 2. the free one: find the quietest patch ---------------- */
@@ -125,75 +126,37 @@ const asQuad = (raw: unknown): Quad | null => {
 /**
  * Ask a vision model where the caption belongs.
  *
- * Uses the Gemini key pool and the text-model ladder, so it costs nothing while
- * a free tier lasts and steps down when one runs out.
+ * Goes through whatever vision engine is configured in Settings → Vision, not
+ * through one fixed company. If that engine is unreachable, or has no credit,
+ * or simply is not set up, the caller still gets a usable quad from the free
+ * quiet-patch finder along with a plain sentence saying what went wrong — the
+ * feature degrades instead of failing.
  */
 export async function findTextSpotWithVision(
   pngBase64: string,
   instruction: string,
   settings: ForgeSettings,
-  model: string,
   signal?: AbortSignal
 ): Promise<SpotResult & { status?: number; body?: string }> {
-  const key = settings.geminiKeys.find((k) => k.key.trim() && k.exhaustedUntil <= Date.now())?.key.trim();
-  if (!key) {
-    return {
-      quad: quadFromRect(0.15, 0.7, 0.7, 0.18),
-      surface: "",
-      confident: false,
-      problem: "no Google key available — add one in Settings → Engines",
-    };
-  }
+  const fallback = quadFromRect(0.15, 0.7, 0.7, 0.18);
+  const engine = settings.vision;
+  const model = engine.model;
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: `${SPOT_SYSTEM}\n\nWhat the caption is for: ${instruction || "a short caption"}` },
-          { inline_data: { mime_type: "image/png", data: pngBase64 } },
-        ],
-      },
-    ],
-    generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
-  };
+  const res = await askVision(
+    engine,
+    pngBase64,
+    `${SPOT_SYSTEM}
 
-  let res: Response;
-  try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(body),
-      signal,
-    });
-  } catch (e) {
-    return {
-      quad: quadFromRect(0.15, 0.7, 0.7, 0.18),
-      surface: "",
-      confident: false,
-      problem: (e as { message?: string })?.message ?? "could not reach Google",
-    };
-  }
+What the caption is for: ${instruction || "a short caption"}`,
+    signal
+  );
 
-  const text = await res.text().catch(() => "");
   if (!res.ok) {
-    return {
-      quad: quadFromRect(0.15, 0.7, 0.7, 0.18),
-      surface: "",
-      confident: false,
-      model,
-      status: res.status,
-      body: text,
-      problem: `the vision model answered ${res.status}`,
-    };
+    return { quad: fallback, surface: "", confident: false, model, problem: res.problem, status: res.status, body: res.body };
   }
 
   try {
-    const json = JSON.parse(text) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const answer = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    const cleaned = answer.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
-    const parsed = JSON.parse(cleaned) as { quad?: unknown; surface?: string; confident?: boolean };
+    const parsed = jsonFromReply(res.text) as { quad?: unknown; surface?: string; confident?: boolean };
     const quad = asQuad(parsed.quad);
     if (!quad) throw new Error("the model did not return four usable corners");
     return {
@@ -204,7 +167,7 @@ export async function findTextSpotWithVision(
     };
   } catch (e) {
     return {
-      quad: quadFromRect(0.15, 0.7, 0.7, 0.18),
+      quad: fallback,
       surface: "",
       confident: false,
       model,

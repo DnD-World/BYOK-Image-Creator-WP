@@ -12,7 +12,6 @@ import {
 } from "../lib/textLayer";
 import { findQuietQuad, findTextSpotWithVision } from "../lib/findTextSpot";
 import { quadToPixels, type Point, type Quad } from "../lib/warp";
-import { DEFAULT_LADDER, countCall, currentRung, emptyUsage, isAllowanceError, stepDown, type LadderUsage } from "../lib/modelLadder";
 import { downloadBlob } from "../lib/output";
 import { Btn, IX, ITrash } from "./ui";
 
@@ -50,7 +49,6 @@ export default function Letterer({
   const [activeId, setActiveId] = useState<string>("");
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
-  const [ladderUsage, setLadderUsage] = useState<LadderUsage>(emptyUsage);
   const [what, setWhat] = useState("");
 
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -208,41 +206,25 @@ export default function Letterer({
     c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
     const b64 = c.toDataURL("image/png").split(",")[1];
 
-    let usage = ladderUsage;
-    for (let attempt = 0; attempt < DEFAULT_LADDER.length; attempt++) {
-      const rung = currentRung(DEFAULT_LADDER, usage);
-      if (!rung) {
-        setNote("Every model on the ladder is out for today. Place it by hand, or use “Find a quiet spot”.");
-        break;
-      }
-      const r = await findTextSpotWithVision(b64, what || row.prompt.slice(0, 120), settings, rung.model);
-
-      if (r.status !== undefined && isAllowanceError(r.status, r.body ?? "")) {
-        const s = stepDown(DEFAULT_LADDER, usage, rung.model);
-        usage = s.usage;
-        setLadderUsage(usage);
-        pushToast("info", s.message);
-        pushLog?.(`⇣ ${s.message}`, "info");
-        continue;
-      }
-
-      if (r.problem) {
-        setNote(`Could not ask the model — ${r.problem}. Place it by hand.`);
-        break;
-      }
-
-      usage = countCall(usage, rung.model);
-      setLadderUsage(usage);
+    // One engine, one call. This used to walk a ladder of Google models,
+    // stepping down as each daily allowance ran out. The vision engine is now
+    // whatever you chose in Settings, so there is no ladder to walk: if it
+    // cannot answer, say why and let the free quiet-spot finder cover you.
+    const r = await findTextSpotWithVision(b64, what || row.prompt.slice(0, 120), settings);
+    if (r.problem) {
+      setNote(`Could not ask the model — ${r.problem}. Place it by hand, or use “Find a quiet spot”.`);
+      pushLog?.(`· lettering: ${r.problem}`, "info");
+    } else {
       patch({ quad: r.quad, freeform: true });
+      const named = r.model ? ` (${r.model})` : "";
       setNote(
         r.confident
-          ? `Placed on ${r.surface || "the surface it found"} (${rung.label}). Nudge the corners if it is off.`
-          : `No obvious surface, so it chose a clear area (${rung.label}). Drag it if you disagree.`
+          ? `Placed on ${r.surface || "the surface it found"}${named}. Nudge the corners if it is off.`
+          : `No obvious surface, so it chose a clear area${named}. Drag it if you disagree.`
       );
-      break;
     }
     setBusy("");
-  }, [active, ladderUsage, patch, pushLog, pushToast, row.prompt, settings, what]);
+  }, [active, patch, pushLog, row.prompt, settings, what]);
 
   const save = useCallback(async () => {
     const img = imgRef.current;

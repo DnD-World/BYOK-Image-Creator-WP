@@ -314,7 +314,39 @@ export class RetiredModelError extends Error {
 const FREE_ENGINES = new Set(["local", "simulated", "cloudflare", "pollinations"]);
 
 /** Which engine + API model id a row should be struck with. */
+/**
+ * An engine the user has switched off in Settings.
+ *
+ * Not the same as broken. A provider can be down, or expensive, or having a
+ * bad month, and you want the app to stop reaching for it without deleting
+ * your keys and losing the setup. A paused engine fails immediately with a
+ * sentence saying so, rather than spending thirty seconds proving it again.
+ */
+export class PausedEngineError extends Error {
+  constructor(engine) {
+    super(`${engine} is paused in Settings — switch it back on there, or pick another engine.`);
+    this.name = "PausedEngineError";
+    this.engine = engine;
+  }
+}
+
+/** Engine ids are code; these are what a person calls them. */
+export const PROVIDER_LABELS = {
+  gemini: "Google",
+  cloudflare: "Cloudflare",
+  pollinations: "Pollinations",
+  openai: "The OpenAI-compatible endpoint",
+  local: "Your own machine",
+};
+
+const isPaused = (engine, s) => Array.isArray(s?.pausedEngines) && s.pausedEngines.includes(engine);
+
 export function resolveRoute(row, s) {
+  const route = resolveRouteIgnoringPauses(row, s);
+  return isPaused(route.engine, s) ? { ...route, engine: "paused", pausedEngine: route.engine } : route;
+}
+
+function resolveRouteIgnoringPauses(row, s) {
   const wanted = (row.model || "").trim();
   if (wanted) {
     const def = findModel(wanted);
@@ -698,8 +730,9 @@ async function openaiCompat(row, apiModel, s, signal, exhaust, cooldownMs) {
 
 /** Real generation against the routed engine, with key rotation on rate limits. */
 export async function generateBytes(rawRow, s, signal, exhaust, cooldownMs, opts = {}) {
-  const { engine, apiModel } = resolveRoute(rawRow, s);
+  const { engine, apiModel, pausedEngine } = resolveRoute(rawRow, s);
   if (engine === "retired") throw new RetiredModelError(apiModel, RETIRED_MODELS[apiModel]);
+  if (engine === "paused") throw new PausedEngineError(PROVIDER_LABELS[pausedEngine] ?? pausedEngine ?? "That engine");
   // Models that cannot write get told not to try.
   const row = suppressTextIfWeak(rawRow, s);
   const refImages = opts.refImages ?? [];

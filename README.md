@@ -1,285 +1,277 @@
 <div align="center">
 
-# ⚒ IMAGE FORGE
+<img src="public/favicon.svg" width="88" alt="">
 
-### *manifest in · images out · zero WordPress required*
+# Image Forge
 
-A standalone, manifest-driven AI image pipeline — built for a D&D marketplace,
-deliberately decoupled from it, ready to feed any project with organized art.
+### Bulk AI image generation from a spreadsheet, using your own API keys
 
-[![build](https://img.shields.io/badge/build-passing-8cb56f?style=for-the-badge)](#)
-[![version](https://img.shields.io/badge/v1.0.0-f2a33c?style=for-the-badge&label=release)](#)
-[![engines](https://img.shields.io/badge/engines-4_wired_%2B_15_catalogued-56b8a5?style=for-the-badge)](#)
-[![keys](https://img.shields.io/badge/keys-rotating_pools-e2593f?style=for-the-badge)](#)
-[![platforms](https://img.shields.io/badge/browser_%C2%B7_electron_%C2%B7_tauri-b18ce0?style=for-the-badge&label=runs%20on)](#)
-[![agents](https://img.shields.io/badge/MCP-Claude_%C2%B7_Hermes_%C2%B7_n8n-cdbc9f?style=for-the-badge)](#)
+Give it a list of pictures you want. Get back a folder of images, named and
+sorted, with a CSV that says what happened to each one. Your API keys stay on
+your machine — there is no account, no server, and nothing to sign up for.
+
+**Runs free with no credit card.** Cloudflare Workers AI gives roughly 690
+images a day; Pollinations is unlimited but slow; your own machine is
+unlimited and private. Paid engines are there when you want them, and the app
+asks before spending a penny.
+
+<br>
+
+### [⬇ Download for Windows](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
+
+*Installer and a no-install portable version. Free, open source, no account.*
+<br>*Mac and Linux: run it from source — [two commands](#run-it-from-source).*
+
+<br>
+
+[![CI](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml/badge.svg)](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/DnD-World/BYOK-Image-Creator-WP?label=release&color=f2a33c)](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
+[![Tests](https://img.shields.io/badge/tests-349-56b8a5)](tests/)
 
 </div>
 
 ---
 
-## The pipeline this repo implements
+## Start where you are
 
-```
- ┌────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
- │ 1. build   │   │ 2. arrange   │   │ 3. run the   │   │ 4. review &  │
- │ your ideas │──▶│ prompts in   │──▶│ forge — free │──▶│ redo failures│
- │ (wizard/AI)│   │ the manifest │   │ or with keys │   │ with notes   │
- └────────────┘   └──────────────┘   └──────┬───────┘   └──────┬───────┘
-                                             │                  │
- ┌────────────┐   ┌──────────────┐   ┌──────▼───────┐   ┌──────▼───────┐
- │ 9. your    │   │ 8. store     │   │ 7. Imagify   │   │ 6. import to │
- │ frontend   │◀──│ attachment   │◀──│ optimizes    │◀──│ WP Media (or │
- │ uses URLs  │   │ ids in SQL   │   │ everything   │   │ your own DB) │
- └────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
-        ▲
-        └── or skip 6–9 entirely: keep the PNGs, keep the CSV, done.
-```
+Five doors. Each one is a full guide written for that reader — pick yours and
+ignore the rest.
 
-Steps 1–5 are this app. Steps 6–9 are *your* project — the forge even writes
-the WP-CLI script for step 6.
+| | | |
+|---|---|---|
+| 🪟 | **[I just want to download and use it](docs/download.md)** | Windows, double-click, no terminal. Includes what to do about the blue "Windows protected your PC" box. |
+| 🙂 | **[I don't write code](docs/no-code.md)** | What an API key is, which free engine to start with, and how to make your first batch. Nothing assumed. |
+| ✨ | **[I vibe-code](docs/vibe-coding.md)** | Wire it to Claude Code, Cursor or n8n over MCP and let an agent fill the manifest and run the forge. |
+| 🧑‍💻 | **[I'm a developer](docs/developers.md)** | Architecture, the engine registry, how to add a provider, the test suite, the CSV contract. |
+| 🎥 | **[I make content](docs/creators.md)** | Sprite sheets, mouth shapes for talking avatars, GIFs from a single still, text with perspective warp. |
+
+**[📖 Full documentation](https://dnd-world.github.io/BYOK-Image-Creator-WP/)** — searchable, with a page per subsystem.
 
 ---
 
-## What you actually get
+## Is this the thing you were looking for?
 
-**⚡ The Wizard** — nine steps, one decision each, explained like you're ten.
-Name the batch → pick a **world** (12 flavors: D&D, cyberpunk, sci-fi,
-cottagecore, gothic, steampunk, pirate, mythology, old west, modern, anime, or
-plain generic) → list the pictures (AI writes them, or paste/upload a CSV) →
-pick a look → pick a painter → pick a shape → pick a home → extras → review in
-an accordion. Saved setups become one-click **recipes** for the next batch.
+These are the specific problems it exists to solve. If none of them is yours,
+it probably is not the right tool, and that is fine.
 
-**🎨 Engines, per row** — the `model` column routes *each row* to its own painter:
+<details open>
+<summary><b>"Google says my prepayment credits are depleted and I never spent anything"</b></summary>
 
-| model id | engine | what it costs | free allowance |
-|---|---|---|---|
-| `cloudflare-flux` | Cloudflare Workers AI | **free** | ~690 images/day, resets midnight UTC, no card |
-| `flux` · `turbo` | Pollinations | **free** | unlimited, but one every ~5s, and it needs a free token |
-| `nano-banana-2-lite` | Google | $0.034 · batch $0.017 | none |
-| `nano-banana-2` | Google | $0.067 · batch $0.034 | none |
-| `nano-banana` | Google | $0.039 · batch $0.019 | none — **Google switches it off 2 Oct 2026** |
-| `gemini-3-pro-image` | Google | $0.134 · batch $0.067 | none |
-| `dall-e-3` · `gpt-image-1` | any OpenAI-compatible endpoint | ~$0.04 | none |
-| *(practice forge)* | procedural, offline, deterministic | free | infinite |
+<br>
 
-> Prices checked against the providers on **2 September 2026**. "Batch" is Google's
-> half price for pictures you are willing to wait for — see below.
->
-> **Two things changed under this app in August 2026.** Google retired every
-> Imagen endpoint on **17 August**, and with it the old free ~25/day allowance;
-> image generation moved to a new API and there is no free Google tier any more.
-> Pollinations started refusing anonymous requests with a bot check. Both are
-> handled: old manifests are migrated automatically, and Settings → Advanced →
-> Repair moves any leftover row onto a current model.
+Since around March 2026 the Gemini API bills against a separate **Prepay – AI
+Studio** balance. Ordinary Google Cloud credit — including free trial credit
+and most vouchers — does not pay for it. A key in that state will happily list
+all fifty models and then refuse every actual request, usually with a `429`
+that reads like a rate limit and is not one.
 
-**⏳ Batch jobs — the same pictures for half the money** — hand a pile of rows to
-Google in one go and collect them later. Press **Batch · half price**, then
-**Check batches** when you come back. Google's target is 24 hours; in practice it
-is usually well under an hour. The job survives closing the app.
+Image Forge tests each key with a **real generation call**, not a model list,
+so it tells you the truth: *"The key is valid, but its project has no
+credit."* Then it offers you the free engines instead of failing.
 
-**🔑 Key pools with rotation** — add as many keys as you like per engine.
-On a 429 the current key rests and the next one retries the *same row*
-immediately. A row only parks (with an editable per-model cooldown — 24h
-default for the daily-quota models) when the whole pool rests. Expired
-cooldowns re-queue themselves automatically.
+It also finds the same key pasted into two slots, which is easy to do and
+quietly halves what you thought your allowance was.
 
-**📁 Files, organized** — every finished image lands in
-`shops/ items/ events/ npcs/` via three doors: a **linked folder** (native in
-the desktop builds, File System Access in Chrome/Edge — point it at your
-Google Drive sync folder for free cloud sync), a **ZIP** with the full
-structure + CSV, or row-by-row **Save PNG**.
+</details>
 
-**🖼 Libraries** — every picture (like/dislike, mark failed + write a note →
-redo folds your note into the new prompt), visual styles (5 built-in + your
-own, the text model can invent new ones), saved recipes, and previous batches
-with live progress and per-batch CSV export.
+<details>
+<summary><b>"Imagen was retired and my script stopped working"</b></summary>
 
-**✍️ The Scribe** — any OpenAI-compatible chat model rewrites briefs into full
-prompts ending in the locked style block, forges rule-perfect filenames,
-suggests styles, and emits WordPress-ready `title/alt/caption` JSON. Its
-instructions are editable in Settings → Text prompts.
+<br>
 
-**🎭 The law of the forge** — seven filename rules enforced live with one-click
-auto-fix; one visual language per batch with drift warnings; negative prompts
-auto-filled per world flavor.
+Google switched off every Imagen `:predict` endpoint on **17 August 2026**,
+and the old free allowance went with it. Image generation moved to a new API
+with a different request shape.
 
-**🖥 Three ways to run it** — browser, an Electron installer/portable exe
-(~200 MB, double-click `make-installer.bat`), or Tauri (~10 MB,
-`npm run tauri:build`). Plus **Emberfair**, the D&D night-market storefront
-this was all built for, one click away.
+Old manifests are migrated on load. **Settings → Advanced → Repair** moves any
+row still pointing at a dead model onto a current one, and the agent API has
+`forge_fix_retired` for the same job.
 
-**🤖 An agent API** — `scripts/mcp-server.js` speaks MCP over stdio, so
-Claude Code, Hermes, LangChain and n8n can read the manifest, add ideas and
-*generate real images for free* (see below). It runs the same engines the app
-does, so an agent gets keyless Pollinations out of the box and Imagen / DALL-E
-as soon as you hand it keys.
+</details>
 
----
+<details>
+<summary><b>"I want a hundred images, not one, and I want them named properly"</b></summary>
 
-## Quickstart
+<br>
 
-```bash
-npm install
-npm run dev          # browser → http://localhost:5173   (or double-click start-forge.bat)
-```
+The unit of work is a spreadsheet row, not a chat message. One row, one
+picture, one filename — and the filename rules are enforced as you type, with
+one-click fixes. Images land in subfolders by category. The CSV records what
+was made, when, with which model, and what went wrong if anything did.
 
-**Package it:**
+Failed rows can be retried on their own. Rows that hit a daily quota park
+themselves and re-queue when the quota resets.
 
-```bash
-node scripts/build-exe.js          # Electron → release\ (installer + portable)
-npm run tauri:icons && npm run tauri:build   # Tauri → src-tauri\target\…\bundle\
-```
+</details>
 
-**Connect an agent:**
+<details>
+<summary><b>"I don't want to paste my API key into somebody's website"</b></summary>
+
+<br>
+
+There is no backend. Keys live in your browser's local storage, or in
+`%APPDATA%\Image Forge` on the desktop build. They are sent to exactly one
+place: the engine you chose. Nothing is phoned home, because there is nowhere
+to phone.
+
+The desktop build serves itself over `127.0.0.1` on a random port, with
+context isolation on and navigation locked to itself.
+
+</details>
+
+<details>
+<summary><b>"I want to spend nothing, or know exactly what I am about to spend"</b></summary>
+
+<br>
+
+Free engines are never gated. Paid ones always are: before a paid run you get
+a dialog naming the count, the model, the price per picture, the total, and
+which credit it comes out of — including how many days that credit has left.
+You can approve it, or switch to a free engine from the same dialog.
+
+Google's half-price batch mode is one button. Free-tier keys are always tried
+before paid ones.
+
+</details>
+
+<details>
+<summary><b>"I want an agent to do this, not me"</b></summary>
+
+<br>
+
+`scripts/mcp-server.js` speaks MCP over stdio. Claude Code, Cursor, n8n and
+LangChain can list the manifest, add rows, and generate real images through
+the same engine code the app uses.
 
 ```bash
 claude mcp add image-forge node scripts/mcp-server.js
-# then: "use the forge to make the pending images" — it will.
 ```
 
-With no keys the agent generates through keyless Pollinations. To give it the
-same keyed engines the app uses, point it at a backup exported from
-**Settings → Advanced → Backup**, or set the keys in its environment:
+Then: *"use the forge to make the pending images"* — and it will.
 
-```bash
-node scripts/mcp-server.js --settings ./image-forge-backup-2026-09-01.json
-# or: GEMINI_API_KEYS=key1,key2 node scripts/mcp-server.js
-```
-
-| Variable | What it does |
-|---|---|
-| `GEMINI_API_KEY` / `GEMINI_API_KEYS` | Imagen keys (comma-separated, rotated on 429) |
-| `OPENAI_API_KEY` / `OPENAI_API_KEYS` | keys for any OpenAI-compatible endpoint |
-| `OPENAI_BASE_URL`, `OPENAI_IMAGE_MODEL` | point at Together, OpenRouter, a local WebUI… |
-| `FORGE_PROVIDER` | force `pollinations` / `imagen` / `openai` |
-
-A row's `model` column still wins over all of it, exactly as in the app.
-
-Full plain-language walkthrough: **[GUIDE.md](GUIDE.md)** ·
-handing the repo to someone else: **[HANDOFF.md](HANDOFF.md)** ·
-Windows packaging: **[WINDOWS-EXE.md](WINDOWS-EXE.md)** · Tauri: **[TAURI.md](TAURI.md)**
+</details>
 
 ---
 
-## The manifest — the whole contract
+## The engines
+
+| `model` column | Engine | Cost per image | Free allowance |
+|---|---|---|---|
+| *(blank)* | Your own machine via LocalAI | **free** | unlimited, private, no internet |
+| `cloudflare-flux` | Cloudflare Workers AI | **free** | ~690/day, resets midnight UTC, no card |
+| `flux` · `turbo` | Pollinations | **free** | unlimited, ~one per 5s, needs a free token |
+| `nano-banana-2-lite` | Google | $0.034 · batch $0.017 | none |
+| `nano-banana-2` | Google | $0.067 · batch $0.034 | none |
+| `nano-banana` | Google | $0.039 · batch $0.019 | none — **off 2 Oct 2026** |
+| `gemini-3-pro-image` | Google | $0.134 · batch $0.067 | none |
+| `dall-e-3` · `gpt-image-1` | Any OpenAI-compatible endpoint | ~$0.04 | none |
+| *(practice forge)* | Procedural, offline, deterministic | free | infinite |
+
+> Prices checked against the providers on **2 September 2026**. Free
+> allowances drift — check the provider's own page before you build on one.
+> "Batch" is Google's half price for pictures you will collect later.
+
+The `model` column routes **each row** to its own engine, so one batch can mix
+free and paid.
+
+---
+
+## What it does
+
+**The Wizard** — nine steps, one decision each. Name the batch, pick a world,
+list the pictures (or let a text model write them), pick a look, a painter, a
+shape, a home. Saved setups become one-click recipes.
+
+**34 styles** in six families, with per-style notes on which engines can
+actually do them. Infographics and posters are limited to the models that can
+really render text, rather than letting you find out the expensive way.
+
+**Sheets** — sprite sheets, character turnarounds, and viseme sheets: the ten
+mouth shapes an avatar needs to look like it is speaking. Each frame gets its
+own seed and a *"change only this"* instruction.
+
+**GIFs** — turn any finished picture into an animation, or describe one and
+have the frames generated.
+
+**Text with perspective** — drop text onto an image and drag its four corners
+independently, the way you would in PowerPoint or Photoshop. Real projective
+warp, so text sits on a wall or a sign instead of floating over it.
+
+**Vectors** — SVG and Lottie written by a code model, sanitised before
+anything is rendered or saved.
+
+**Key pools** — as many keys as you like per engine. On a `429` the key rests
+and the next one retries the same row immediately. Check every key in a pool
+at once and see which ones actually work.
+
+**Files** — a linked folder (point it at a Drive sync folder for free cloud
+backup), a ZIP with the structure and CSV, or one picture at a time.
+
+---
+
+## The manifest is the contract
 
 ```csv
-id,filename,prompt,negative_prompt,note,category,kind,style,aspect_ratio,seed,model,status,error,generated_at,imported_attachment_id
-1,shop_cyber_noodle_bar.png,"rain-slick noodle stall, neon steam…",text watermark,make it rainier,shop,cyberpunk,claymation,16:9,41,imagen-4-ultra,pending,,,
+id,filename,prompt,category,aspect_ratio,seed,model,status
+1,shop_cyber_noodle_bar.png,"rain-slick noodle stall, neon steam",shop,16:9,41,cloudflare-flux,pending
 ```
 
-| column | meaning |
-|---|---|
-| `filename` | **the only required column** — seven rules enforced (lowercase, no spaces, underscores, `category_` prefix, `.png`, unique…) |
-| `prompt` / `negative_prompt` | what to paint, what to avoid (negatives auto-fill per world) |
-| `category` | `shop · item · event · npc` → decides the output subfolder |
-| `kind` | world flavor → filename tag + prompt/negative seasoning |
-| `model` | per-row engine; blank = the default engine in Settings |
-| `status` | `pending → generating → done → imported` (+ `failed`, `skipped`) |
-| `note` | your "make it better" instruction — becomes part of the redo prompt |
-| `rating` | `like` / `dislike` from the image library |
-| `item_id · shop_id · event_id` | foreign keys back into *your* app's SQL |
-| `imported_attachment_id` | filled by the WordPress import step |
+`filename` is the only required column. Everything else has a sensible
+default. Import forgives missing columns; export is CSV or XLSX.
 
-Import forgives missing columns and mid-generation rows. Export as **CSV or XLSX**.
+Any tool that can read and write this CSV is a first-class citizen of the
+project. That is the whole design.
 
 ---
 
-## Project map
+## Run it from source
 
+```bash
+npm install
+npm run dev
 ```
-src/
-├─ App.tsx                 forge orchestrator: queue runner, rotation, folder doors,
-│                          batches, wizard wiring + the market⇄forge switch
-├─ market/                 Emberfair — the D&D night market this feeds
-├─ types.ts                statuses, categories, 12 kinds, aspects, styles
-├─ index.css               the whole design system (tokens, motion, effects)
-├─ lib/
-│  ├─ csv.ts               RFC-4180 parser + full-schema read/write
-│  ├─ engines.mjs          THE image engines — model registry, routing, 429
-│  │                       rotation. DOM-free plain ESM so the MCP server
-│  │                       runs the exact same code (types: engines.d.mts)
-│  ├─ providers.ts         browser wrapper over engines.mjs + key pools,
-│  │                       cooldowns, usage, scribe + factory chat,
-│  │                       settings shape & migration
-│  ├─ preview.ts           seeded procedural plates (the "practice forge")
-│  ├─ output.ts            folder linking, subfolder routing, ZIP, blob helpers
-│  ├─ tauriFs.ts           Tauri-native folder picker/writer (browser fallback)
-│  ├─ batches.ts           wizard setups, recipes, batch registry, idea generator
-│  ├─ validate.ts          the seven filename rules + auto-fix
-│  └─ seed.ts · version.ts
-├─ components/
-│  ├─ WizardView · PromptFactory · ManifestView · LibraryViews
-│  ├─ SettingsView (9 sections incl. Advanced) · ScribeDrawer · WpImportModal
-│  ├─ TopMenu · Sidebar · DocsView · AgentsView
-│  ├─ ui.tsx               icon set, chips, buttons, toasts, code blocks
-│  └─ effects.tsx          DotField · EmberField · StarField · BorderGlow · CursorFX
-scripts/
-├─ mcp-server.js           the agent API (6 tools, stdio, same engines as the app)
-├─ build-exe.js            vite → icon → electron-builder → release/
-├─ tauri-icons.js          emblem → full Tauri icon set
-└─ publish-github.bat      one-click git init → push
-electron/main.js           desktop shell: 127.0.0.1 server (secure context!),
-                           menus, "where is my data?", external links
-src-tauri/                 Tauri v2 shell: dialog + fs + shell plugins
-build/installer.nsh        NSIS hook: "also delete my data?" on uninstall
+
+Opens at `http://localhost:3000`. Works on Windows, macOS and Linux.
+
+Build a Windows installer:
+
+```bash
+node scripts/build-exe.js
 ```
 
 ---
 
-## Under the hood, in one breath
+## What it is not
 
-`App.tsx` owns the manifest (`rows`) and runs a **sequential strike loop**:
-each row resolves its route (`model` column → engine/model/apiId), a key is
-picked from the healthy pool, the request flies, and on success the image is
-cached in memory, previewed, and — if a folder is linked — written to disk.
-429s bench the key and retry with the next; exhaustion parks the row under a
-cooldown. Everything text-shaped persists to `localStorage`
-(`image-forge-manifest-v1`, `-settings-v1`, `-setups-v1`, `-batches-v1`);
-folder handles persist in IndexedDB; desktop data lives in
-`%APPDATA%\Image Forge`. No backend, no accounts, nothing leaves your machine
-except the requests to the engines you choose.
+Being straight about this saves everyone time.
 
----
-
-## House rules for contributors
-
-- **The manifest is the API.** Any tool that reads/writes the CSV is a
-  first-class citizen — that's the whole philosophy.
-- **One decision per UI step**, plain English, no jargon — a ten-year-old
-  should be able to run a batch.
-- **Free first.** Every paid engine must have a keyless fallback path
-  (Pollinations for images, the offline idea generator for text).
-- No `console.log` in shipped code; feedback flows through toasts + the
-  forge console. No `alert/confirm` — ever.
-- Verify with `npm test`, `npm run typecheck` and `npm run build` — all three
-  run in CI on every push and PR (.github/workflows/ci.yml). Tests live in
-  `tests/`; anything touching the CSV, filenames or the engines needs one.
+- **Not a chat image generator.** If you want one picture from one sentence,
+  the provider's own web app is faster.
+- **Not signed.** Windows shows a blue "Windows protected your PC" box on
+  first run, because a code-signing certificate costs a few hundred a year.
+  [What to click](docs/download.md).
+- **Not a hosted service.** There is no cloud version and no accounts.
+- **Not able to fix a provider's outage or an empty balance.** It will tell
+  you clearly which one it is, and offer you a free engine instead.
+- **Mac and Linux run from source only.** The packaged builds are Windows.
 
 ---
 
-## Roadmap
+## Contributing
 
-- [x] manifest + status lifecycle · seven filename rules · five styles
-- [x] four engines, per-row routing, key pools, 429 rotation, cooldowns
-- [x] wizard · recipes · prompt factory · 12 world kinds · negative prompts
-- [x] folder auto-save · ZIP · WP-CLI + REST import · undo · variants · XLSX
-- [x] Electron installer + Tauri shell · MCP agent API
-- [ ] **code signing** (kills the SmartScreen warning — needs a certificate)
-- [ ] **OAuth Google Drive upload** as a fourth output door
-- [ ] **autosave prompt templates** + scheduled nightly runs
-- [x] a test suite (vitest, 69 tests) + GitHub Actions CI
-- [ ] a real `forge` CLI wrapping the MCP server
-- [ ] reconnect Emberfair to pull *real* generated plates by filename ⚔️
+Read **[STANDARDS.md](STANDARDS.md)** first — it is short, and it says what
+"done" means here. Then **[HANDOFF.md](HANDOFF.md)** for how the project fits
+together.
+
+`npm test`, `npm run typecheck` and `npm run build` all run in CI on every
+push. Anything touching the CSV, filenames, money or the engines needs a test.
 
 ---
 
 <div align="center">
 
-Keys never leave the browser except to call the engines you choose.
-Quota numbers drift — verify on provider pricing pages before building on a
-free tier. Built with React · Vite · Tailwind · Electron · Tauri.
+Built with React · Vite · Tailwind · Electron · Tauri.
+No backend. No accounts. Your keys, your machine.
 
 *struck, not templated* ⚒
 
