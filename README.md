@@ -78,9 +78,10 @@ that cannot make a single call, *because* of the money. **Unlinking the
 project restores the free tier** — confirmed on a real account, not repeated
 from a forum.
 
-Image Forge tests each key with a **real generation call**, not a model list,
-so it tells you the truth: *"The key is valid, but its project has no
-credit."* Then it offers you the free engines instead of failing.
+Image Forge tests each key with a **real generation call**, not a model list —
+because a key in this state lists all fifty models perfectly and then refuses
+everything. It names the cause rather than the symptom, tells you which of the
+two fixes you want, and offers the free engines meanwhile.
 
 There is a second, different failure that looks identical from the outside.
 Google also returns `403` *"Your project has been denied access"* — a block on
