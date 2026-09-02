@@ -91,6 +91,8 @@ export interface ForgeSettings {
   /** warn before the browser's storage box fills up and starts dropping data */
   storageWarnAtPct: number;
   scribe: { base: string; key: string; model: string };
+  /** a model for writing CODE — SVG, Lottie JSON. Codestral is built for this. */
+  coder: { base: string; key: string; model: string };
   cooldowns: Record<string, number>;
   usage: Record<string, { day: string; used: number }>;
   writeCsvOnSync: boolean;
@@ -136,6 +138,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   batchJobs: [],
   storageWarnAtPct: 70,
   scribe: { base: "https://api.openai.com/v1", key: "", model: "gpt-4o-mini" },
+  coder: { base: "https://api.mistral.ai/v1", key: "", model: "codestral-latest" },
   cooldowns: {},
   usage: {},
   writeCsvOnSync: true,
@@ -170,6 +173,7 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     batchJobs: Array.isArray(s.batchJobs) ? s.batchJobs : [],
     concurrency: Math.min(Math.max(Number(s.concurrency) || 1, 1), 8),
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
+    coder: { ...DEFAULT_SETTINGS.coder, ...(s.coder ?? {}) },
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },
     wp: { ...DEFAULT_SETTINGS.wp, ...(s.wp ?? {}) },
