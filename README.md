@@ -17,17 +17,17 @@ asks before spending a penny.
 
 <br>
 
-### [⬇ Download for Windows](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
+### [⬇ Download for Windows](https://github.com/Stravelakis/image-forge/releases/latest)
 
 *Installer and a no-install portable version. Free, open source, no account.*
 <br>*Mac and Linux: run it from source — [two commands](#run-it-from-source).*
 
 <br>
 
-[![CI](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml/badge.svg)](https://github.com/DnD-World/BYOK-Image-Creator-WP/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/DnD-World/BYOK-Image-Creator-WP?label=release&color=f2a33c)](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
+[![CI](https://github.com/Stravelakis/image-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/Stravelakis/image-forge/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Stravelakis/image-forge?label=release&color=f2a33c)](https://github.com/Stravelakis/image-forge/releases/latest)
 [![Licence](https://img.shields.io/badge/licence-Apache--2.0-8cb56f)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-385-56b8a5)](tests/)
+[![Tests](https://img.shields.io/badge/tests-413-56b8a5)](tests/)
 
 </div>
 
@@ -46,7 +46,7 @@ ignore the rest.
 | 🧑‍💻 | **[I'm a developer](docs/developers.md)** | Architecture, the engine registry, how to add a provider, the test suite, the CSV contract. |
 | 🎥 | **[I make content](docs/creators.md)** | Sprite sheets, mouth shapes for talking avatars, GIFs from a single still, text with perspective warp. |
 
-**[📖 Full documentation](https://dnd-world.github.io/BYOK-Image-Creator-WP/)** — searchable, with a page per subsystem.
+**[📖 Full documentation](https://stravelakis.github.io/image-forge/)** — searchable, with a page per subsystem.
 
 ---
 

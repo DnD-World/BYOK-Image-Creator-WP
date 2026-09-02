@@ -8,7 +8,7 @@ import { checkForge, isNewerThan } from "./lib/selfCheck";
  * Where this app comes from. Used when the user has not set their own repo,
  * so the update check works out of the box. A fork's own setting still wins.
  */
-const HOME_REPO = { owner: "DnD-World", repo: "BYOK-Image-Creator-WP" };
+const HOME_REPO = { owner: "Stravelakis", repo: "image-forge" };
 
 type UpdateReady = {
   version: string;

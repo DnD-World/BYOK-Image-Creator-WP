@@ -185,7 +185,7 @@ mistake, and it quietly halves an allowance you thought you had.
 
 ## Still stuck
 
-[Open an issue](https://github.com/DnD-World/BYOK-Image-Creator-WP/issues).
+[Open an issue](https://github.com/Stravelakis/image-forge/issues).
 Include what you pressed and what it said. "The button did nothing" is a
 perfectly good bug report.
 

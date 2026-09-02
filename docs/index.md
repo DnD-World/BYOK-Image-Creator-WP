@@ -8,8 +8,8 @@ nav_order: 1
 Bulk AI image generation from a spreadsheet, using your own API keys. No
 account, no server, no subscription — your keys stay on your machine.
 
-[Download for Windows](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest){: .btn .btn-primary }
-[View on GitHub](https://github.com/DnD-World/BYOK-Image-Creator-WP){: .btn }
+[Download for Windows](https://github.com/Stravelakis/image-forge/releases/latest){: .btn .btn-primary }
+[View on GitHub](https://github.com/Stravelakis/image-forge){: .btn }
 
 ---
 
@@ -80,7 +80,7 @@ Writing, code and vision models are also free: one
 
 ## Licence
 
-[Apache-2.0](https://github.com/DnD-World/BYOK-Image-Creator-WP/blob/master/LICENSE).
+[Apache-2.0](https://github.com/Stravelakis/image-forge/blob/master/LICENSE).
 Use it, sell what you make with it, build on it. If you redistribute it, the
-[NOTICE](https://github.com/DnD-World/BYOK-Image-Creator-WP/blob/master/NOTICE)
+[NOTICE](https://github.com/Stravelakis/image-forge/blob/master/NOTICE)
 file travels with it. Just using the app carries no obligation.

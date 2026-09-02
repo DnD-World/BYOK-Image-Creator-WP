@@ -129,7 +129,7 @@ with just `filename` and `prompt`.
 ## Wiring into other stacks
 
 The repo has a longer walkthrough in
-[CONNECT-AGENTS.md](https://github.com/DnD-World/BYOK-Image-Creator-WP/blob/master/CONNECT-AGENTS.md)
+[CONNECT-AGENTS.md](https://github.com/Stravelakis/image-forge/blob/master/CONNECT-AGENTS.md)
 covering Claude Code, n8n, LangGraph and Hermes.
 
 The short version for LangGraph: treat `forge_generate_pending` as a node,

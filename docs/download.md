@@ -11,7 +11,7 @@ No terminal. No accounts. Roughly five minutes.
 
 ## 1. Get the file
 
-### [⬇ Open the downloads page](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest)
+### [⬇ Open the downloads page](https://github.com/Stravelakis/image-forge/releases/latest)
 
 Scroll to the bottom of that page, to a grey section called **Assets**. You
 want one of these two:
@@ -90,7 +90,7 @@ download the new installer and run it — it installs over the old version and
 keeps your settings, keys and manifest.
 
 To go back to an older version, every release stays on the
-[releases page](https://github.com/DnD-World/BYOK-Image-Creator-WP/releases)
+[releases page](https://github.com/Stravelakis/image-forge/releases)
 forever.
 
 ---
@@ -113,10 +113,10 @@ For the portable version: delete the `.exe`. That is all there is.
 |---|---|
 | Blue "Windows protected your PC" | Expected. See [above](#2-the-blue-box). |
 | Antivirus quarantines it | Same cause — unsigned. If you are not comfortable allowing it, run from source instead. |
-| App opens to a white screen | Close it fully and reopen. If it persists, [open an issue](https://github.com/DnD-World/BYOK-Image-Creator-WP/issues) and say which Windows version you are on. |
+| App opens to a white screen | Close it fully and reopen. If it persists, [open an issue](https://github.com/Stravelakis/image-forge/issues) and say which Windows version you are on. |
 | "Every key is resting" | Your engine hit its daily limit. Switch to another engine in Settings, or wait for the reset. |
 | "The key is valid, but its project has no credit" | The key works, but the account behind it has no money. See [the credit problem](troubleshooting.md). |
 
-Still stuck? [Open an issue](https://github.com/DnD-World/BYOK-Image-Creator-WP/issues).
+Still stuck? [Open an issue](https://github.com/Stravelakis/image-forge/issues).
 There is no wrong question, and "the button did nothing" is a perfectly good
 bug report.

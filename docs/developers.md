@@ -159,7 +159,7 @@ a human working on the same file corrupt each other's rows.
   valid, but its project has no credit" beats "429 RESOURCE_EXHAUSTED".
 - **Free first.** Every paid engine needs a keyless fallback path.
 
-Full version: [STANDARDS.md](https://github.com/DnD-World/BYOK-Image-Creator-WP/blob/master/STANDARDS.md).
+Full version: [STANDARDS.md](https://github.com/Stravelakis/image-forge/blob/master/STANDARDS.md).
 
 ---
 

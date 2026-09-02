@@ -8,8 +8,8 @@ description: Bulk AI image generation from a spreadsheet, using your own API key
 remote_theme: just-the-docs/just-the-docs
 
 # Pages live in /docs but the site is served from the repo root path.
-baseurl: "/BYOK-Image-Creator-WP"
-url: "https://dnd-world.github.io"
+baseurl: "/image-forge"
+url: "https://stravelakis.github.io"
 
 search_enabled: true
 search:
@@ -22,9 +22,9 @@ heading_anchors: true
 
 aux_links:
   "View on GitHub":
-    - "https://github.com/DnD-World/BYOK-Image-Creator-WP"
+    - "https://github.com/Stravelakis/image-forge"
   "Download for Windows":
-    - "https://github.com/DnD-World/BYOK-Image-Creator-WP/releases/latest"
+    - "https://github.com/Stravelakis/image-forge/releases/latest"
 aux_links_new_tab: true
 
 back_to_top: true
