@@ -60,6 +60,7 @@ import PromptFactory from "./components/PromptFactory";
 import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./components/LibraryViews";
 import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
+import Letterer from "./components/Letterer";
 import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
@@ -133,6 +134,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [factoryItems, setFactoryItems] = useState<FactoryItem[]>([]);
   const [compare, setCompare] = useState<null | { rowId: number; variantSeed: number; variant: string }>(null);
   const [gifFor, setGifFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
+  const [textFor, setTextFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -1008,6 +1010,19 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     [pushToast]
   );
 
+  /** Open the lettering panel for a finished row. */
+  const openLetterer = useCallback(
+    (row: ManifestRow) => {
+      const blob = imagesRef.current.get(row.filename);
+      if (!blob) {
+        pushToast("info", "That picture is not in memory any more — press Redo to make it again, then add lettering.");
+        return;
+      }
+      setTextFor({ row, blob });
+    },
+    [pushToast]
+  );
+
   repairForgeRef.current = repairForge;
 
   const backupAll = useCallback(() => {
@@ -1484,7 +1499,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           </main>
         ) : view === "lib-images" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
-            <ImageLibrary rows={rows} batches={batches} updateRow={patchRow} onRedo={rerunMarked} onMakeGif={openGifMaker} />
+            <ImageLibrary rows={rows} batches={batches} updateRow={patchRow} onRedo={rerunMarked} onMakeGif={openGifMaker} onAddText={openLetterer} />
           </main>
         ) : view === "lib-styles" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
@@ -1597,6 +1612,29 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             }
           }}
           pushToast={pushToast}
+        />
+      )}
+
+      {textFor && (
+        <Letterer
+          row={textFor.row}
+          blob={textFor.blob}
+          settings={settings}
+          onClose={() => setTextFor(null)}
+          onSaved={async (name, png) => {
+            const tRoot = tauriFolderRef.current;
+            const asPng = { ...textFor.row, filename: name };
+            try {
+              if (isTauri() && tRoot) await tauriWriteImage(tRoot, asPng, png);
+              else if (folderRef.current) await writeImageFile(folderRef.current, asPng, png);
+              else return;
+              pushLog(`⤓ ${name} written beside ${textFor.row.filename}`, "ok");
+            } catch {
+              pushLog(`⚠ could not write ${name} into the linked folder`, "err");
+            }
+          }}
+          pushToast={pushToast}
+          pushLog={pushLog}
         />
       )}
 

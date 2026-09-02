@@ -36,6 +36,7 @@ export function ImageLibrary({
   updateRow,
   onRedo,
   onMakeGif,
+  onAddText,
 }: {
   rows: ManifestRow[];
   batches: Batch[];
@@ -43,6 +44,7 @@ export function ImageLibrary({
   onRedo: (ids: number[]) => void;
   /** offered only for finished pictures whose bytes we still hold */
   onMakeGif?: (row: ManifestRow) => void;
+  onAddText?: (row: ManifestRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState<Category | "all">("all");
@@ -177,6 +179,16 @@ export function ImageLibrary({
                   <Btn variant="ghost" className="flex-1 justify-center !px-2 !py-1.5 !text-[11px]" onClick={() => onRedo([r.id])}>
                     <IHammer size={11} /> Redo
                   </Btn>
+                  {onAddText && (r.status === "done" || r.status === "imported") && (
+                    <Btn
+                      variant="ghost"
+                      className="flex-1 justify-center !px-2 !py-1.5 !text-[11px]"
+                      onClick={() => onAddText(r)}
+                      title="put real lettering on this picture"
+                    >
+                      T Text
+                    </Btn>
+                  )}
                   {onMakeGif && (r.status === "done" || r.status === "imported") && (
                     <Btn
                       variant="ghost"
