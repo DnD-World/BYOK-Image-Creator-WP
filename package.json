@@ -12,7 +12,9 @@
     "tauri:icons": "node scripts/tauri-icons.js",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -23,6 +25,7 @@
     "canvas-confetti": "^1.9.3",
     "date-fns": "^2.30.0",
     "framer-motion": "^11.16.1",
+    "gifenc": "^1.0.3",
     "jszip": "^3.10.1",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
@@ -48,6 +51,7 @@
     "tailwindcss": "^4.1.7",
     "typescript": "^5.7.0",
     "vite": "^6.3.5",
+    "vitest": "^3.2.4",
     "xlsx": "^0.18.5"
   }
 }

@@ -105,8 +105,11 @@ async function main() {
     process.platform === "win32"
       ? path.join(ROOT, "node_modules", ".bin", "vite.cmd")
       : path.join(ROOT, "node_modules", ".bin", "vite");
+  // shell:true means the command string is parsed by cmd/sh, so a path with a
+  // space in it ("C:\Users\me\CLAUDE SPACE\…") splits unless we quote it.
+  const quoted = (p) => (/[\s]/.test(p) ? `"${p}"` : p);
   const b = fs.existsSync(viteBin)
-    ? spawnSync(viteBin, ["build"], { cwd: ROOT, stdio: "inherit", shell: true })
+    ? spawnSync(quoted(viteBin), ["build"], { cwd: ROOT, stdio: "inherit", shell: true })
     : spawnSync("vite", ["build"], { cwd: ROOT, stdio: "inherit", shell: true });
   if (b.status !== 0) fail("vite build failed — scroll up for the real error");
   ok("site built");
@@ -125,7 +128,10 @@ async function main() {
       productName: "Image Forge",
       copyright: "Image Forge — forged locally",
       asar: true,
-      directories: { output: "release", buildResources: "build" },
+      // FORGE_OUTPUT lets you package somewhere else — useful when a syncing or
+      // aggressively scanned folder makes electron-builder trip over its own
+      // temp directory ("EPERM: rename win-unpacked.tmp").
+      directories: { output: process.env.FORGE_OUTPUT || "release", buildResources: "build" },
       files: ["electron/**/*", "build/icon.png", "package.json"],
       extraResources: [{ from: "dist", to: "dist" }],
       win: {

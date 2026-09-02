@@ -1,0 +1,73 @@
+name: Build the installer
+
+# Builds the Windows installer and puts it on a download page anyone with the
+# link can use. Two ways to start it:
+#   · push a tag like v1.1.0        → a proper numbered release
+#   · press "Run workflow" on GitHub → a build from whatever is on master
+#
+# Nothing secret goes into the build: your keys live on your own machine, in
+# the browser's storage, and are never part of the code.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Check nothing is broken before shipping it
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build the installer
+        # Build outside the checkout: Windows Defender holds a lock on the
+        # freshly unpacked electron.exe and the rename fails inside a scanned
+        # folder ("EPERM: rename win-unpacked.tmp").
+        env:
+          FORGE_OUTPUT: ${{ runner.temp }}\forge-build
+        run: node scripts/build-exe.js
+
+      - name: Keep the files even if the release step is skipped
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-forge-windows
+          path: |
+            ${{ runner.temp }}/forge-build/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the download page
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            ${{ runner.temp }}/forge-build/*.exe
+          body: |
+            **Image Forge — Windows**
+
+            · `Image Forge Setup *.exe` — the normal installer, pick your folder
+            · `image-forge-portable.exe` — no install, runs from anywhere
+
+            Windows will show a blue "Windows protected your PC" box the first
+            time, because the app is not signed with a paid certificate.
+            Click **More info** → **Run anyway**.
+
+            Your API keys are never in this build. They stay on your own machine.
