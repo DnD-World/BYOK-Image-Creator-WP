@@ -15,6 +15,7 @@ import {
 import { WHY_MANUAL_DATE, creditNoteFor } from "../lib/paidGuard";
 import { VISION_PRESETS, listChatModels } from "../lib/visionEngine";
 import { checkForge, fixableOf, summarise, type Finding } from "../lib/selfCheck";
+import { Spotlight, Stagger } from "./motion";
 import {
   STYLE_CATALOGUE,
   STYLE_GROUPS,
@@ -328,16 +329,18 @@ function HealthCheck({
       {findings && (
         <div className="mt-3 space-y-2">
           <p className="font-mono text-[11.5px] text-parch">{summarise(findings)}</p>
-          {findings.map((f) => (
-            <div key={f.id} className={`rounded-lg border p-3 ${tone[f.severity]}`}>
-              <p className="text-[13px] text-cream">
-                {f.title}
-                <span className="ml-2 font-mono text-[10px] text-dust uppercase">{word[f.severity]}</span>
-                {f.fixable && <span className="ml-2 font-mono text-[10px] text-moss">fixable</span>}
-              </p>
-              <p className="mt-1 text-[12px] leading-relaxed text-dust">{f.detail}</p>
-            </div>
-          ))}
+          <Stagger className="space-y-2">
+            {findings.map((f) => (
+              <Spotlight key={f.id} className={`rounded-lg border p-3 ${tone[f.severity]}`}>
+                <p className="text-[13px] text-cream">
+                  {f.title}
+                  <span className="ml-2 font-mono text-[10px] text-dust uppercase">{word[f.severity]}</span>
+                  {f.fixable && <span className="ml-2 font-mono text-[10px] text-moss">fixable</span>}
+                </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-dust">{f.detail}</p>
+              </Spotlight>
+            ))}
+          </Stagger>
         </div>
       )}
     </div>
@@ -1661,7 +1664,47 @@ export default function SettingsView({
                 />
               </div>
             )}
-            <P>All animation honors your system's “reduce motion” setting automatically.</P>
+            {/* motion — the master switch over everything above */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Movement</p>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+                How much things move. This governs everything on this page.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(
+                  [
+                    ["system", "Follow my system", "Whatever your operating system's “reduce motion” setting says. The right choice for almost everyone."],
+                    ["full", "Everything moves", "All of it, regardless of the system setting."],
+                    ["reduced", "Only what matters", "Things that tell you something happened still move. Endless drifting, flickering and scrolling stops."],
+                    ["off", "Still", "Nothing animates at all."],
+                  ] as const
+                ).map(([id, label, why]) => {
+                  const active = (settings.ambient.motion ?? "system") === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => patchSettings({ ambient: { ...settings.ambient, motion: id } })}
+                      title={why}
+                      className={`rounded-lg border px-3 py-1.5 text-[12.5px] transition ${
+                        active ? "border-ember bg-ember/15 text-cream" : "border-line text-dust hover:text-cream"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11.5px] text-dust">
+                {
+                  {
+                    system: "Following your operating system. If you have turned reduce-motion on there, the forge is already calm.",
+                    full: "Everything moves, even if your system asks for less.",
+                    reduced: "A row finishing still catches your eye. Nothing drifts, flickers or scrolls forever.",
+                    off: "Completely still.",
+                  }[settings.ambient.motion ?? "system"]
+                }
+              </p>
+            </div>
           </>
         )}
 

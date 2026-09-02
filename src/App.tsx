@@ -78,6 +78,7 @@ import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./com
 import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
 import UpdateReadyDialog from "./components/UpdateReadyDialog";
+import { CountUp, type MotionLevel } from "./components/motion";
 import Letterer from "./components/Letterer";
 import SheetMaker from "./components/SheetMaker";
 import VectorMaker from "./components/VectorMaker";
@@ -1300,6 +1301,21 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const styleBlock = STYLES.find((s) => s.id === styleLock)?.block ?? settings.customStyles.find((s) => s.id === styleLock)?.block ?? "";
   const accent = accentHex(settings.ambient.accent);
 
+  /**
+   * The motion setting lives on <html> so plain CSS can act on it, including
+   * inside components that never see React state. "system" sets nothing at
+   * all, which leaves the prefers-reduced-motion media query in charge.
+   */
+  const motionPref = settings.ambient.motion ?? "system";
+  useEffect(() => {
+    const root = document.documentElement;
+    if (motionPref === "system") root.removeAttribute("data-motion");
+    else root.setAttribute("data-motion", motionPref);
+  }, [motionPref]);
+
+  /** What the motion components should do. "system" resolves at use site. */
+  const motionLevel: MotionLevel = motionPref === "system" ? "full" : motionPref;
+
   return (
     <div
       className="grain relative flex h-screen flex-col overflow-hidden bg-ink"
@@ -1307,6 +1323,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       style={
         {
           "--color-ember": accent,
+          "--accent": accent,
           "--fg-glow": `${accent}8c`,
           "--fg-glow-idle": `${accent}29`,
         } as CSSProperties
@@ -1480,6 +1497,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               }}
               drift={drift}
               violations={violations}
+              motion={motionLevel}
               onJumpSpec={() => nav("settings", "filenames")}
             />
             <main className="relative flex min-w-0 flex-1 flex-col">

@@ -129,6 +129,12 @@ export interface ForgeSettings {
     glow: "off" | "accent" | "prismatic";
     cursor: "none" | "lantern" | "sparks";
     cursorSize: number;
+    /**
+     * How much things move. "system" follows the operating system's own
+     * reduce-motion setting, which is the right default: someone who set it
+     * there should not have to find it again in here.
+     */
+    motion: "system" | "full" | "reduced" | "off";
   };
   customStyles: { id: string; name: string; block: string }[];
 }
@@ -177,6 +183,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
     glow: "accent",
     cursor: "lantern",
     cursorSize: 240,
+    motion: "system",
   },
   customStyles: [],
 };

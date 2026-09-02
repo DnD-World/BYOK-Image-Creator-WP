@@ -2,6 +2,7 @@ import type { Category, ManifestRow, Status } from "../types";
 import { CATEGORIES, CATEGORY_META, STATUSES, STATUS_META } from "../types";
 import { BorderGlow } from "./effects";
 import { Btn, CAT_ICON, IAlert, ICheck, IHammer, IPlay, IX } from "./ui";
+import { CountUp, type MotionLevel } from "./motion";
 
 export interface SidebarProps {
   rows: ManifestRow[];
@@ -16,6 +17,7 @@ export interface SidebarProps {
   drift: number;
   violations: number;
   onJumpSpec: () => void;
+  motion: MotionLevel;
 }
 
 export default function Sidebar(p: SidebarProps) {
@@ -54,7 +56,9 @@ export default function Sidebar(p: SidebarProps) {
               >
                 <span className={`h-2 w-2 rounded-full ${STATUS_META[s].dot} ${s === "generating" && n > 0 ? "pulse-dot" : ""}`} />
                 <span className="flex-1 font-mono text-[12px]">{s}</span>
-                <span className={`font-mono text-[12px] tabular-nums ${n > 0 ? "text-cream" : "text-dust/60"}`}>{n}</span>
+                <span className={`font-mono text-[12px] tabular-nums ${n > 0 ? "text-cream" : "text-dust/60"}`}>
+                  <CountUp value={n} level={p.motion} />
+                </span>
               </button>
             </li>
           ))}

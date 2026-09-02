@@ -256,10 +256,55 @@ body {
   animation: floatUp 1.15s ease-out both;
 }
 
+/*
+ * Motion, switched off three ways.
+ *
+ * This used to name seven classes by hand and had fallen fifteen behind — new
+ * animations were simply never covered. It is now a blanket rule, so anything
+ * added later is included automatically and nobody has to remember.
+ *
+ *   · the operating system's "reduce motion" setting
+ *   · data-motion="reduced"  — decoration stops, state changes still animate
+ *   · data-motion="off"      — everything stops
+ *
+ * "reduced" keeps the short transitions that tell you something happened (a
+ * row finishing, a panel opening) and stops the endless decorative loops. That
+ * distinction is the point: motion that carries meaning is not the motion that
+ * makes people ill.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .ticker, .sway, .sway-slow, .flicker-lamp, .flicker-win, .smoke, .awning-tilt {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
+}
+
+/* Decoration only: infinite loops and ambient drift. */
+:root[data-motion="reduced"] .ticker,
+:root[data-motion="reduced"] .sway,
+:root[data-motion="reduced"] .sway-slow,
+:root[data-motion="reduced"] .flicker-lamp,
+:root[data-motion="reduced"] .flicker-win,
+:root[data-motion="reduced"] .smoke,
+:root[data-motion="reduced"] .awning-tilt,
+:root[data-motion="reduced"] .shimmer,
+:root[data-motion="reduced"] .breathe,
+:root[data-motion="reduced"] .dash-flow,
+:root[data-motion="reduced"] .stripes,
+:root[data-motion="reduced"] .flicker {
+  animation: none !important;
+}
+
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 @keyframes dashFlow {
@@ -374,3 +419,63 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 details summary::-webkit-details-marker {
   display: none;
 }
+
+/* ---------------- motion primitives (see components/motion.tsx) ---------------- */
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.stagger-in {
+  animation: staggerIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes revealWord {
+  from { opacity: 0; transform: translateY(0.35em); filter: blur(3px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.reveal-word {
+  display: inline-block;
+  animation: revealWord 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/*
+ * A light that follows the cursor across a panel. The gradient is painted in a
+ * ::before so it never affects layout, and it is driven entirely by two CSS
+ * variables — no React re-render per mouse move.
+ */
+.spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--accent, #f2a33c) 14%, transparent),
+    transparent 65%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+.spotlight:hover::before { opacity: 1; }
+
+.magnetic {
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/*
+ * A row that has just finished. Brief on purpose: this fires once per picture
+ * during a run, and anything longer turns a fifty-row batch into a light show.
+ */
+@keyframes struck {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #f2a33c) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+.struck { animation: struck 0.75s ease-out both; }
