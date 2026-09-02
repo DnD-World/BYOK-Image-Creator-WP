@@ -2,7 +2,7 @@
 
 > **Read this before touching anything.** It maps every subsystem, explains the
 > non-obvious decisions, and ends with copy-paste recipes for the changes you're
-> most likely to make. Everything here is true as of **v1.0.0**.
+> most likely to make. Everything here is true as of **2 September 2026**.
 
 ---
 
@@ -28,7 +28,7 @@ no framework required to run the forge.**
 
 ```bash
 npm install
-npm run dev                 # browser app → http://localhost:5173
+npm run dev                 # browser app → http://localhost:3000
 npm run typecheck           # tsc --noEmit (build does NOT typecheck!)
 npm run build               # vite build → dist/
 node scripts/build-exe.js   # Electron → release/ (installer + portable)
@@ -62,8 +62,9 @@ committing — CI isn't set up yet (good first PR: GitHub Actions running
                         │
           ┌─────────────┼──────────────┬───────────────┐
           ▼             ▼              ▼               ▼
-     simulated     pollinations    imagen 4.x      openai-compatible
-     (preview.ts)  (keyless GET)  (Gemini predict) (/images/generations)
+  simulated  pollinations  cloudflare   google      openai-compatible
+ (preview)  (needs token)  (via proxy) (nano-banana) (/images/generations)
+                                        + LocalAI on your own machine
 ```
 
 The UI is a **view switch** (`TopMenu.View`) rendered by `App.tsx`:
@@ -135,8 +136,13 @@ a reload by design; "doors" (folder/ZIP/PNG) are how bytes escape.
 
 `resolveRoute(row, settings)` → `{ engine, apiModel, def }`:
 **the row's `model` column wins**; only if blank does `settings.provider`
-decide. That's why one manifest can mix `imagen-4-ultra` shop fronts with
-keyless `flux` icons.
+decide. That's why one manifest can mix paid `nano-banana-2` shop signs with
+free `cloudflare-flux` icons.
+
+A route can also come back as `engine: "retired"` (the row names a model the
+provider switched off) or `engine: "paused"` (the user switched that engine
+off in Settings). Both throw a named error immediately rather than making a
+doomed request.
 
 **Key rotation** happens inside `generateReal(row, settings, signal, exhaust, cooldownMs)`:
 1. filter the pool to keys with `exhaustedUntil <= now`,
@@ -148,7 +154,7 @@ keyless `flux` icons.
    rows whose `retry_at` passed.
 
 **Cooldowns** are user-editable per model (`settings.cooldowns[id]`), default
-24 h for the daily-quota Imagens. `usage` tracks per-model/per-day counters
+24 h for the daily-quota models. `usage` tracks per-model/per-day counters
 (reset on date change — see `bumpUsage`/`usedToday`).
 
 **Simulated engine**: `strike()` branches before `generateReal` — it sleeps,
@@ -231,10 +237,14 @@ entry + menu item + section JSX, thread any new callbacks through `App.tsx`.
 ## 11. Known sharp edges
 
 - **`vite build` skips typecheck** — run `npm run typecheck`.
-- **Thin test suite.** `npm test` (vitest) covers `csv.ts`, `validate.ts`,
-  `engines.mjs` and the MCP tool surface; the React components have none.
-- **Pollinations** is slow (5–40 s) and occasionally CORS-flaky; that's why
-  the simulated engine exists and why requests are sequential, not parallel.
+- **The React components have no tests.** The libraries are well covered
+  (385 tests across 20 files) but every component is unverified except by
+  hand. This is the biggest gap in the project.
+- **Pollinations** is slow (5–40 s) and now needs a free token — anonymous
+  requests are refused with a Turnstile error.
+- **Cloudflare sends no CORS headers**, so the browser cannot call it at all.
+  There is a proxy in `vite.config.js` AND in `electron/main.js`; both must
+  stay in step. Node has no such rule, so the MCP server calls it directly.
 - **localStorage** has a ~5 MB ceiling — the 350 ms debounce helps; if
   manifests grow huge, migrate to IndexedDB (`idb-keyval`).
 - **Preview sandboxes** block File System Access → folder linking fails there
@@ -267,8 +277,11 @@ entry + menu item + section JSX, thread any new callbacks through `App.tsx`.
 
 - *Why not a backend?* The manifest-is-API philosophy: any filesystem +
   spreadsheet is already integration. Agents get MCP instead of REST.
-- *Why sequential generation?* Free tiers punish concurrency; sequential +
-  key rotation maximizes throughput on the quotas that exist.
+- *Why lanes rather than one at a time?* It used to be strictly sequential,
+  because free tiers punish concurrency. It is now 1–6 lanes, defaulting to
+  1, with rows handed out one at a time from a shared cursor — so the old
+  behaviour is still the default and a slow picture no longer blocks the
+  rest. Stop lands within one request.
 - *Why does `strike()` live in App, not a lib?* It mutates three stores
   (rows, settings pools, imagesRef) and talks to toasts/log — it's the
   orchestrator. Pure parts (routing, requests, math) are all in
@@ -278,5 +291,40 @@ entry + menu item + section JSX, thread any new callbacks through `App.tsx`.
 
 ---
 
-*Last verified against v1.0.0 — if this file and the code disagree, the code
-wins, and please fix this file.*
+## 14. Subsystems added since this file was first written
+
+Each of these is self-contained, tested, and safe to read on its own.
+
+| Where | What it does | Worth knowing |
+|---|---|---|
+| `lib/paidGuard.ts` | Works out what a run will cost and which credit pays | Free engines are never gated. Names the credit expiring soonest among *usable* keys, because free keys are tried first but carry no date |
+| `lib/visionEngine.ts` | A model that can look at a picture | Any OpenAI-shaped endpoint. **No hard-coded model list** — `listChatModels()` asks the endpoint, because a stale id in our source becomes the user's 404 |
+| `lib/testConnection.ts` | "Does this key actually work?" per engine | Must make a **real** call. Listing models is free and proves nothing. The vision check sends a real red square |
+| `lib/styleCatalogue.ts` | 34 styles in 6 groups | Knows which engines can do which style; infographic/poster are limited to models that can really render text |
+| `lib/warp.ts` | Homography maths for the four-corner text warp | Pure functions, no DOM, heavily tested |
+| `lib/textLayer.ts` | Text layers with real fonts | Auto-shrinks to fit rather than clipping |
+| `lib/sheets.ts` | Sprite / turnaround / viseme / expression sheets | Each frame gets its own seed plus a "change ONLY this" instruction — that is what keeps a character consistent |
+| `lib/vectorAssets.ts` | SVG and Lottie via a code model | `sanitiseSvg()` strips scripts, handlers and external refs, and adds a missing `xmlns` |
+| `lib/motionPlan.ts` | Camera-motion plans for GIFs | Motion over one still, not many generations — coherent, instant, free |
+| `lib/modelLadder.ts` | Step-down through models as allowances run out | Used by the text side. The Letterer no longer uses it: vision is one configured engine now |
+
+### Settings shape
+
+Three chat-style engines, all `{ base, key, model }` and all
+OpenAI-compatible: `scribe` (writes), `coder` (SVG/Lottie), `vision` (looks).
+Settings → Text engines offers to point all three at one key.
+
+`pausedEngines: string[]` switches an engine off without dismantling it.
+
+### The one rule worth repeating
+
+`engines.mjs` stays DOM-free. It is what lets the app and the MCP server run
+the same code. See [STANDARDS.md](STANDARDS.md) for the rest, and
+[docs/troubleshooting.md](docs/troubleshooting.md) for provider behaviour that
+contradicts provider documentation.
+
+
+---
+
+*Last verified 2 September 2026 — if this file and the code disagree, the
+code wins, and please fix this file.*
