@@ -2,8 +2,15 @@ import { useState } from "react";
 import type { Toast } from "../types";
 import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
-import { MODELS, PROVIDER_META, formatCountdown, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
+import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
+import {
+  STYLE_CATALOGUE,
+  STYLE_GROUPS,
+  availableModelsForStyle,
+  defaultModelForStyle,
+  stylesInGroup,
+} from "../lib/styleCatalogue";
 import type { FolderState } from "./SettingsDrawer";
 import { BorderGlow } from "./effects";
 import { Btn, IAlert, ICheck, IDownload, IFolder, IRetry, ISparkle, ITrash, IX } from "./ui";
@@ -129,6 +136,8 @@ export default function SettingsView({
   onCheckUpdate,
   appVersion,
   pushToast,
+  styleLock,
+  onLockStyle,
 }: {
   section: SettingsSection;
   onSection: (s: SettingsSection) => void;
@@ -146,6 +155,9 @@ export default function SettingsView({
   onCheckUpdate: () => void;
   appVersion: string;
   pushToast: (kind: Toast["kind"], msg: string) => void;
+  /** the look every new row starts with */
+  styleLock?: string;
+  onLockStyle?: (id: string) => void;
 }) {
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState("");
@@ -155,6 +167,9 @@ export default function SettingsView({
   const [pullMode, setPullMode] = useState<"merge" | "replace">("merge");
   const [resetChecks, setResetChecks] = useState({ rows: false, recipes: false, settings: false, market: false });
   const [confirmReset, setConfirmReset] = useState(false);
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [localBusy, setLocalBusy] = useState(false);
+  const [localNote, setLocalNote] = useState("");
 
   const testText = async () => {
     setTestBusy(true);
@@ -234,13 +249,200 @@ export default function SettingsView({
                 );
               })}
             </div>
+            {/* ---- your own machine ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">
+                Your own machine <span className="ml-1 font-mono text-[10px] text-moss">free · unlimited · private</span>
+              </p>
+              <p className="mt-1 text-[12px] text-dust">
+                If you run LocalAI, ComfyUI, LM Studio or an SD WebUI, point the forge at it. No key, no limit, nothing
+                leaves your computer. The model name must match exactly what your server calls it.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">server address</label>
+                  <input
+                    value={settings.localBase}
+                    onChange={(e) => patchSettings({ localBase: e.target.value.trim() })}
+                    placeholder="http://localhost:8080/v1"
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">model</label>
+                  {localModels.length > 0 ? (
+                    <select
+                      value={settings.localModel}
+                      onChange={(e) => patchSettings({ localModel: e.target.value })}
+                      className={field}
+                    >
+                      {!localModels.includes(settings.localModel) && (
+                        <option value={settings.localModel}>{settings.localModel} (not on the server)</option>
+                      )}
+                      {localModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={settings.localModel}
+                      onChange={(e) => patchSettings({ localModel: e.target.value.trim() })}
+                      placeholder="flux.2-klein-4b"
+                      className={field}
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Btn
+                  onClick={async () => {
+                    setLocalBusy(true);
+                    setLocalNote("");
+                    try {
+                      const base = settings.localBase.replace(/\/+$/, "");
+                      const res = await fetch(`${base}/models`, {
+                        headers: settings.localKey.trim() ? { Authorization: `Bearer ${settings.localKey.trim()}` } : {},
+                      });
+                      if (!res.ok) throw new Error(`the server answered ${res.status}`);
+                      const json = (await res.json()) as { data?: { id?: string }[] };
+                      const ids = (json.data ?? []).map((d) => d.id).filter((x): x is string => Boolean(x)).sort();
+                      if (!ids.length) throw new Error("the server has no models loaded");
+                      setLocalModels(ids);
+                      setLocalNote(`Found ${ids.length} model${ids.length > 1 ? "s" : ""}.`);
+                      pushToast("ok", `Found ${ids.length} models on your machine.`);
+                    } catch (e) {
+                      const why = (e as { message?: string })?.message ?? "unknown";
+                      setLocalNote(`Could not reach it — ${why}. Is the server running at that address?`);
+                      pushToast("err", `Could not reach your local server — ${why}`);
+                    } finally {
+                      setLocalBusy(false);
+                    }
+                  }}
+                  disabled={localBusy || !settings.localBase.trim()}
+                >
+                  {localBusy ? "Looking…" : "Find my models"}
+                </Btn>
+                {localNote && <span className="text-[11.5px] text-dust">{localNote}</span>}
+              </div>
+              <p className="mt-2 text-[11px] text-dust">
+                Leave the key blank unless your server asks for one. Local pictures are slow — the forge waits up to
+                fifteen minutes before giving up on one. A row's own <span className="font-mono text-cream">model</span>{" "}
+                column still wins, so you can mix models within one batch (at the cost of a reload between them).
+              </p>
+            </div>
+
+            {/* ---- Cloudflare: the free one ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">
+                Cloudflare — the free option <span className="ml-1 font-mono text-[10px] text-moss">recommended</span>
+              </p>
+              <p className="mt-1 text-[12px] text-dust">
+                About 690 pictures a day, free, resetting at midnight UTC. No card needed. Get both of these from your
+                Cloudflare dashboard: the account id is in the address bar when you are logged in, and you make a token
+                under My Profile → API Tokens with the “Workers AI” permission.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">account id</label>
+                  <input
+                    value={settings.cloudflare.accountId}
+                    onChange={(e) => patchSettings({ cloudflare: { ...settings.cloudflare, accountId: e.target.value.trim() } })}
+                    placeholder="a1b2c3d4e5f6…"
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">api token</label>
+                  <input
+                    type="password"
+                    value={settings.cloudflare.token}
+                    onChange={(e) => patchSettings({ cloudflare: { ...settings.cloudflare, token: e.target.value.trim() } })}
+                    placeholder="paste your Workers AI token"
+                    className={field}
+                  />
+                </div>
+              </div>
+              <div className="mt-3">
+                <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
+                  quality · {settings.cloudflareSteps} steps
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={8}
+                  step={1}
+                  value={settings.cloudflareSteps}
+                  onChange={(e) => patchSettings({ cloudflareSteps: Number(e.target.value) })}
+                  className="h-1.5 w-full accent-[#f2a33c]"
+                />
+                <p className="mt-1.5 text-[11px] text-dust">
+                  More steps means a better picture and fewer pictures per day, because Cloudflare charges by the step.
+                  At 4 steps you get roughly 690 a day; at 8 steps roughly 380. Four is the model's intended setting.
+                </p>
+              </div>
+            </div>
+
+            {/* ---- Pollinations: free, but needs a token now ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Pollinations token</p>
+              <p className="mt-1 text-[12px] text-dust">
+                Pollinations stopped serving anonymous requests — without a token every picture fails with “Missing
+                Turnstile token”. A free token at <span className="font-mono text-cream">auth.pollinations.ai</span> fixes
+                it and removes the watermark. Unlimited in total, but paced to one picture every few seconds.
+              </p>
+              <div className="mt-3">
+                <input
+                  type="password"
+                  value={settings.pollinationsToken}
+                  onChange={(e) => patchSettings({ pollinationsToken: e.target.value.trim() })}
+                  placeholder="paste your free Pollinations token"
+                  className={field}
+                />
+              </div>
+            </div>
+
             <KeyPoolEditor
-              title="Gemini key pool (Google Imagen)"
-              hint="free keys at aistudio.google.com/apikey · ≈ 25 images/day per model per key"
+              title="Google key pool (Nano Banana)"
+              hint="keys at aistudio.google.com/apikey · PAID — Google ended the free image tier when it retired Imagen on 17 Aug 2026"
               pool={settings.geminiKeys}
               onChange={(k) => patchSettings({ geminiKeys: k })}
               pushToast={pushToast}
             />
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
+                    default Google model
+                  </label>
+                  <select
+                    value={settings.geminiModel}
+                    onChange={(e) => patchSettings({ geminiModel: e.target.value })}
+                    className={field}
+                  >
+                    {MODELS.filter((m) => m.engine === "gemini").map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} — {formatUsd(m.priceUsd)}/image
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">picture size</label>
+                  <select
+                    value={settings.geminiImageSize}
+                    onChange={(e) => patchSettings({ geminiImageSize: e.target.value })}
+                    className={field}
+                  >
+                    <option value="512px">512px — cheapest</option>
+                    <option value="1K">1K — the usual choice</option>
+                    <option value="2K">2K — costs more</option>
+                    <option value="4K">4K — costs most</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <KeyPoolEditor
               title="OpenAI-compatible key pool"
               hint="OpenAI, Together, OpenRouter, local SD WebUI — anything with /images/generations"
@@ -260,6 +462,165 @@ export default function SettingsView({
                 </div>
               </div>
             </div>
+            {/* ---- what each picture costs ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">What each picture costs</p>
+              <p className="mt-1 text-[12px] text-dust">
+                Checked against the providers on 2 September 2026. “Batch” is Google's half price for pictures you are
+                happy to wait for.
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-[12px]">
+                  <thead>
+                    <tr className="font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
+                      <th className="py-1.5 pr-3">model</th>
+                      <th className="py-1.5 pr-3">each</th>
+                      <th className="py-1.5 pr-3">batch</th>
+                      <th className="py-1.5">free allowance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MODELS.map((m) => (
+                      <tr key={m.id} className="border-t border-line/60">
+                        <td className="py-1.5 pr-3">
+                          <span className="block font-mono text-[11.5px] text-cream">{m.id}</span>
+                          <span className="block text-[10.5px] text-dust">{m.label}</span>
+                          {m.retiresOn && (
+                            <span className="block font-mono text-[9.5px] text-rust">switched off {m.retiresOn}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-[11.5px] text-cream">{formatUsd(m.priceUsd)}</td>
+                        <td className="py-1.5 pr-3 font-mono text-[11.5px] text-moss">
+                          {m.batchPriceUsd === null ? "—" : formatUsd(m.batchPriceUsd)}
+                        </td>
+                        <td className="py-1.5 text-[11px] text-parch">{m.allowance}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ---- writing inside pictures ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Writing inside pictures</p>
+              <p className="mt-1 text-[12px] text-dust">
+                Most models cannot spell. Ask a small model for a shop sign and you get convincing gibberish. Only
+                Google's models and DALL·E write real words reliably.
+              </p>
+              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={settings.suppressTextOnWeakModels}
+                  onChange={(e) => patchSettings({ suppressTextOnWeakModels: e.target.checked })}
+                  className="h-4 w-4 accent-[#f2a33c]"
+                />
+                <span>
+                  <span className="block text-[13px] font-semibold text-cream">
+                    Tell weak models not to attempt writing
+                  </span>
+                  <span className="block text-[11.5px] text-dust">
+                    Quietly adds “no text, letters, words, watermark” to the negatives whenever the chosen model is bad
+                    at spelling. Your manifest is not changed. Models that write well are left alone.
+                  </span>
+                </span>
+                {settings.suppressTextOnWeakModels && <ICheck size={15} className="ml-auto shrink-0 text-moss" />}
+              </label>
+              <div className="mt-3">
+                <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">
+                  how good is YOUR local model at writing?
+                </label>
+                <select
+                  value={settings.localTextQuality}
+                  onChange={(e) => patchSettings({ localTextQuality: e.target.value as typeof settings.localTextQuality })}
+                  className={field}
+                >
+                  <option value="poor">Poor — it produces gibberish (FLUX klein, Z-Image, SD 1.5)</option>
+                  <option value="fair">Fair — short words usually survive</option>
+                  <option value="good">Good — it writes real sentences</option>
+                </select>
+              </div>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-[11.5px]">
+                  <thead>
+                    <tr className="font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
+                      <th className="py-1 pr-3">model</th>
+                      <th className="py-1">can it write?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {MODELS.map((m) => {
+                      const q = MODEL_TRAITS[m.id]?.textQuality ?? "fair";
+                      const tone = q === "good" ? "text-moss" : q === "fair" ? "text-ember" : "text-rust";
+                      return (
+                        <tr key={m.id} className="border-t border-line/60">
+                          <td className="py-1 pr-3 font-mono text-cream">{m.id}</td>
+                          <td className={`py-1 font-mono ${tone}`}>{q}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ---- prompt tailor ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">
+                Tailor prompts to the model <span className="ml-1 font-mono text-[10px] text-dust">off by default</span>
+              </p>
+              <p className="mt-1 text-[12px] text-dust">
+                Different painters want different instructions. Google reads long flowing sentences; a small model on
+                your own machine wants one short concrete line. Switch this on and your text model (Settings → Text
+                engines) rewrites each prompt to suit whoever is drawing it — just before sending, never in your
+                manifest. If the text model is unreachable the original prompt is used and the forge says so.
+              </p>
+              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={settings.tailorPrompts}
+                  onChange={(e) => patchSettings({ tailorPrompts: e.target.checked })}
+                  className="h-4 w-4 accent-[#f2a33c]"
+                />
+                <span>
+                  <span className="block text-[13px] font-semibold text-cream">Rewrite each prompt for its model</span>
+                  <span className="block text-[11.5px] text-dust">
+                    Costs one small text request per picture. Repeated prompts are remembered, so a re-run is free.
+                  </span>
+                </span>
+                {settings.tailorPrompts && <ICheck size={15} className="ml-auto shrink-0 text-moss" />}
+              </label>
+              {settings.tailorPrompts && !settings.scribe.key.trim() && (
+                <p className="mt-2 rounded-lg border border-blood/40 bg-blood/10 px-3 py-2 text-[11.5px] text-blood">
+                  You have no text-engine key yet, so this will do nothing. Add one under Settings → Text engines.
+                </p>
+              )}
+            </div>
+
+            {/* ---- speed dial ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">Speed — how many at once</p>
+              <p className="mt-1 text-[12px] text-dust">
+                1 means one picture at a time, exactly as the forge has always worked. Turning it up finishes big batches
+                faster, at the cost of hitting rate limits sooner — the forge already handles that by resting the key and
+                moving on, so the risk is a slower run, not lost work.
+              </p>
+              <div className="mt-3 flex items-center gap-4">
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  step={1}
+                  value={settings.concurrency}
+                  onChange={(e) => patchSettings({ concurrency: Number(e.target.value) })}
+                  className="h-1.5 flex-1 accent-[#f2a33c]"
+                />
+                <span className="w-28 shrink-0 text-right font-mono text-[12px] text-cream">
+                  {settings.concurrency === 1 ? "one at a time" : `${settings.concurrency} at once`}
+                </span>
+              </div>
+            </div>
+
             <div className="rounded-xl border border-line bg-panel/50 p-4">
               <p className="font-display text-[15px] tracking-wide text-cream">Cooldowns — you choose the wait</p>
               <p className="mt-1 text-[12px] text-dust">hours a row rests after its whole key pool is rate-limited. 24h suits daily quotas; 0 retries at once.</p>
@@ -306,21 +667,94 @@ export default function SettingsView({
             <H>Image styles</H>
             <P>Styles live in the library now — lock them, add your own languages, keep every batch consistent.</P>
             <Btn variant="primary" onClick={onGoStyles}>Open the style library →</Btn>
-            <div className="rounded-xl border border-line bg-panel/50 p-4">
-              <p className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">quick look</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {STYLES.map((s) => (
-                  <span key={s.id} className="flex items-center gap-2 rounded-lg border border-line bg-[#191310] px-2.5 py-1.5">
-                    <span className="flex overflow-hidden rounded">
-                      {s.swatch.map((c) => (
-                        <span key={c} className="h-3.5 w-3.5" style={{ background: c }} />
-                      ))}
-                    </span>
-                    <span className="font-mono text-[11px] text-parch">{s.name}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
+            <P className="mt-1">
+              {STYLE_CATALOGUE.length} looks, grouped. Each one knows which models suit it and which of those you have
+              set up. The <span className="text-moss">green</span> model is what it will use if you change nothing — always
+              the best free option you have, except where the look needs readable words.
+            </P>
+
+            {STYLE_GROUPS.map((group) => {
+              const inGroup = stylesInGroup(group.id);
+              if (!inGroup.length) return null;
+              return (
+                <div key={group.id} className="rounded-xl border border-line bg-panel/50 p-4">
+                  <p className="font-display text-[15px] tracking-wide text-cream">
+                    {group.label} <span className="ml-1 font-mono text-[10px] text-dust">{group.hint}</span>
+                  </p>
+                  <div className="mt-3 grid gap-2.5 lg:grid-cols-2">
+                    {inGroup.map((st) => {
+                      const usable = availableModelsForStyle(st, settings);
+                      const pick = defaultModelForStyle(st, settings);
+                      const locked = styleLock === st.id;
+                      return (
+                        <div
+                          key={st.id}
+                          className={`rounded-lg border p-3 ${locked ? "border-ember/60 bg-ember/8" : "border-line bg-[#191310]"}`}
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <span className="mt-0.5 flex shrink-0 overflow-hidden rounded">
+                              {st.swatch.map((c) => (
+                                <span key={c} className="h-4 w-4" style={{ background: c }} />
+                              ))}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[13px] font-semibold text-cream">
+                                {st.name}
+                                {st.needsText && (
+                                  <span className="ml-1.5 font-mono text-[9px] tracking-wider text-ember uppercase">
+                                    needs words
+                                  </span>
+                                )}
+                              </p>
+                              <p className="mt-0.5 text-[11.5px] leading-snug text-dust">{st.blurb}</p>
+                            </div>
+                            <button
+                              onClick={() => onLockStyle?.(st.id)}
+                              className={`btn-press shrink-0 rounded-md px-2 py-1 font-mono text-[9.5px] tracking-wider uppercase ${
+                                locked ? "bg-ember text-[#241503]" : "border border-line text-dust hover:text-cream"
+                              }`}
+                            >
+                              {locked ? "in use" : "use"}
+                            </button>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {st.recommended.map((m) => {
+                              const have = usable.includes(m);
+                              const isPick = m === pick;
+                              const label = m === "local" ? "your machine" : m;
+                              return (
+                                <span
+                                  key={m}
+                                  title={
+                                    have
+                                      ? isPick
+                                        ? "this is what it will use"
+                                        : "set up and available"
+                                      : "not set up yet — add it under Image engines"
+                                  }
+                                  className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] ${
+                                    isPick
+                                      ? "bg-moss/20 text-moss"
+                                      : have
+                                        ? "border border-line text-parch"
+                                        : "border border-line/50 text-dust/50 line-through"
+                                  }`}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })}
+                            {!usable.length && (
+                              <span className="font-mono text-[9.5px] text-blood">no engine set up for this yet</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
 

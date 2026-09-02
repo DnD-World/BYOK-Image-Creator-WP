@@ -108,7 +108,7 @@ export default function WizardView({
   const [wantSave, setWantSave] = useState(false);
   const [geminiUrl, setGeminiUrl] = useState("https://generativelanguage.googleapis.com/v1beta");
   const [geminiKey, setGeminiKey] = useState("");
-  const [geminiModel, setGeminiModel] = useState("imagen-4");
+  const [geminiModel, setGeminiModel] = useState("nano-banana-2");
   const [oaiUrl, setOaiUrl] = useState(settings.openaiBase || "https://api.openai.com/v1");
   const [oaiKey, setOaiKey] = useState("");
   const [oaiModel, setOaiModel] = useState(settings.openaiModel || "gpt-image-1");
@@ -377,7 +377,7 @@ export default function WizardView({
                   </div>
                 </BorderGlow>
                 {/* google */}
-                <BorderGlow radius={13} glow={chosenModel?.engine === "imagen" ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                <BorderGlow radius={13} glow={chosenModel?.engine === "gemini" ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
                   <div className="p-4">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-display text-[15px] text-cream">Google Imagen</span>
@@ -387,7 +387,7 @@ export default function WizardView({
                       <>
                         <span className="mt-1.5 block text-[12px] text-moss">✓ a key is already saved in Settings</span>
                         <span className="mt-3 flex flex-wrap gap-1.5">
-                          {MODELS.filter((m) => m.engine === "imagen").map((m) => (
+                          {MODELS.filter((m) => m.engine === "gemini").map((m) => (
                             <button key={m.id} onClick={() => patch({ model: m.id })} className={`btn-press rounded-lg border px-2.5 py-1.5 font-mono text-[11px] ${setup.model === m.id ? "border-ember/60 bg-ember/12 text-ember" : "border-line text-parch hover:border-line2"}`}>
                               {m.id} {setup.model === m.id && "✓"}
                             </button>
@@ -399,7 +399,7 @@ export default function WizardView({
                         <input value={geminiUrl} onChange={(e) => setGeminiUrl(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"} placeholder="endpoint url" />
                         <input value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} type="password" className={field + " !py-2 font-mono !text-[11px]"} placeholder="API key (free at aistudio.google.com)" />
                         <select value={geminiModel} onChange={(e) => setGeminiModel(e.target.value)} className={field + " !py-2 font-mono !text-[11px]"}>
-                          {MODELS.filter((m) => m.engine === "imagen").map((m) => (
+                          {MODELS.filter((m) => m.engine === "gemini").map((m) => (
                             <option key={m.id} value={m.id}>{m.id} · {m.free}</option>
                           ))}
                         </select>

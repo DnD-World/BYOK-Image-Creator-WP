@@ -78,6 +78,8 @@ export const ASPECTS: Record<AspectKey, { w: number; h: number; vbW: number; vbH
 
 export const ASPECT_KEYS = Object.keys(ASPECTS) as AspectKey[];
 
+import { STYLE_CATALOGUE } from "./lib/styleCatalogue";
+
 /* ---------------- visual styles (the MEDIUM — no subject baked in) ---------------- */
 
 export interface StyleDef {
@@ -87,38 +89,12 @@ export interface StyleDef {
   swatch: [string, string, string];
 }
 
-export const STYLES: StyleDef[] = [
-  {
-    id: "claymation",
-    name: "Claymation",
-    block: "claymation style, soft warm lighting, charming handmade illustration, clean composition",
-    swatch: ["#e8b06a", "#a5552f", "#7d9c5c"],
-  },
-  {
-    id: "stop-motion-clay",
-    name: "Stop-Motion Clay",
-    block: "stop motion clay style, visible fingerprints, warm practical lighting, charming handmade illustration, clean composition",
-    swatch: ["#d99a5b", "#8f4a2c", "#5f7d4e"],
-  },
-  {
-    id: "paper-cutout",
-    name: "Paper Cutout",
-    block: "paper cutout style, layered cardstock textures, soft side lighting, charming illustration, clean composition",
-    swatch: ["#e5c98f", "#b06a3a", "#88a06b"],
-  },
-  {
-    id: "shadow-puppet",
-    name: "Shadow Puppet",
-    block: "shadow puppet style, dramatic silhouette, warm lantern light, charming illustration, clean composition",
-    swatch: ["#f0b45a", "#3a2a1c", "#1d1410"],
-  },
-  {
-    id: "low-poly",
-    name: "Low-Poly Stylized",
-    block: "low-poly stylized, flat shaded facets, soft rim lighting, charming illustration, clean composition",
-    swatch: ["#d8a35e", "#9c5a34", "#6f9464"],
-  },
-];
+/**
+ * The full catalogue lives in lib/styleCatalogue.ts (it carries per-style
+ * negatives and model advice as well as the prompt wording). STYLES stays here
+ * as the plain list everything else already reads.
+ */
+export const STYLES: StyleDef[] = STYLE_CATALOGUE;
 
 /* ---------------- kinds (the SUBJECT WORLD — optional, "none" = generic) ---------------- */
 

@@ -3,14 +3,24 @@
  * Image Forge — MCP server (the "API" for Claude Code, Hermes, LangChain, n8n…).
  *
  *   node scripts/mcp-server.js
+ *   node scripts/mcp-server.js --csv ./marketplace-images.csv --out ./generated-images \
+ *                              --settings ./image-forge-backup-2026-09-01.json
  *
  * Speaks MCP over stdio. It drives the SAME marketplace-images.csv manifest the
- * web app uses, and can actually generate images with no API key by calling the
- * free Pollinations endpoint. So an agent can:
+ * web app uses, and generates through the SAME engines (src/lib/engines.mjs), so
+ * an agent gets Pollinations for free and Imagen / DALL-E / any OpenAI-compatible
+ * endpoint as soon as keys are supplied. So an agent can:
  *   · read the manifest           (forge_list / forge_status)
  *   · add new picture ideas       (forge_add_row)
  *   · generate the pending ones   (forge_generate_pending) → real PNGs on disk
  *   · retry failures              (forge_retry_failed)
+ *
+ * Keys come from --settings (a backup JSON exported from Settings → Advanced, or
+ * a bare settings object) and/or the environment:
+ *   GEMINI_API_KEY / GEMINI_API_KEYS (comma-separated)
+ *   OPENAI_API_KEY / OPENAI_API_KEYS, OPENAI_BASE_URL, OPENAI_IMAGE_MODEL
+ *   FORGE_PROVIDER (simulated | pollinations | imagen | openai)
+ * With no keys at all the server falls back to keyless Pollinations.
  *
  * Images land in shops/ items/ events/ npcs/ under --out (default: ./generated-images).
  */
@@ -19,7 +29,19 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import {
+  MODELS,
+  RETIRED_MODELS,
+  findModel,
+  resolveRoute,
+  generateBytes,
+  estimateCost,
+  formatUsd,
+  RateLimitError,
+  RetiredModelError,
+} from "../src/lib/engines.mjs";
 
 /* ---------------- config ---------------- */
 
@@ -30,17 +52,114 @@ const flag = (name, fallback) => {
 };
 const CSV_PATH = path.resolve(flag("--csv", "marketplace-images.csv"));
 const OUT_DIR = path.resolve(flag("--out", "generated-images"));
+const SETTINGS_PATH = flag("--settings", "");
 
 const COLUMNS = [
   "id", "filename", "prompt", "negative_prompt", "category", "style",
   "aspect_ratio", "seed", "model", "status", "error", "generated_at",
 ];
 const FOLDERS = { shop: "shops", item: "items", event: "events", npc: "npcs" };
-const DIMS = { "16:9": [1024, 576], "1:1": [768, 768], "9:16": [576, 1024], "4:3": [1024, 768] };
+const ASPECTS = ["16:9", "1:1", "9:16", "4:3"];
+const CATEGORIES = ["shop", "item", "event", "npc"];
+/** Seeds are passed straight to the engines; keep the space wide so batches don't collide. */
+const SEED_MAX = 2147483647;
+const MODEL_IDS = MODELS.map((m) => m.id);
+
+/* ---------------- settings (keys, provider, cooldowns) ---------------- */
+
+const LS_SETTINGS = "image-forge-settings-v1";
+
+const asKeys = (raw) =>
+  String(raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((key, i) => ({ id: `env-${i + 1}`, label: `env-${i + 1}`, key, exhaustedUntil: 0 }));
+
+function loadSettings() {
+  /** @type {any} */
+  let file = {};
+  if (SETTINGS_PATH) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.resolve(SETTINGS_PATH), "utf8"));
+      // accept either a full app backup or a bare settings object
+      file = parsed?.[LS_SETTINGS] ?? parsed ?? {};
+    } catch (e) {
+      process.stderr.write(`[image-forge] could not read --settings: ${e.message || e}\n`);
+    }
+  }
+  const envGemini = asKeys(process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY);
+  const envOpenai = asKeys(process.env.OPENAI_API_KEYS || process.env.OPENAI_API_KEY);
+  const geminiKeys = [...(Array.isArray(file.geminiKeys) ? file.geminiKeys : []), ...envGemini].filter(
+    (k) => k && typeof k.key === "string" && k.key.trim()
+  );
+  const openaiKeys = [...(Array.isArray(file.openaiKeys) ? file.openaiKeys : []), ...envOpenai].filter(
+    (k) => k && typeof k.key === "string" && k.key.trim()
+  );
+  const cloudflare = {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID || file.cloudflare?.accountId || "",
+    token: process.env.CLOUDFLARE_API_TOKEN || file.cloudflare?.token || "",
+  };
+  const pollinationsToken = process.env.POLLINATIONS_TOKEN || file.pollinationsToken || "";
+
+  // Pick whatever is actually usable, cheapest-and-free first. "imagen" in an
+  // old backup means Google, whose endpoints changed when Imagen was retired.
+  const saved = file.provider === "imagen" ? "gemini" : file.provider;
+  const provider =
+    process.env.FORGE_PROVIDER ||
+    (saved && saved !== "simulated" ? saved : "") ||
+    (cloudflare.accountId && cloudflare.token
+      ? "cloudflare"
+      : pollinationsToken
+      ? "pollinations"
+      : geminiKeys.length
+      ? "gemini"
+      : openaiKeys.length
+      ? "openai"
+      : "pollinations");
+
+  return {
+    provider,
+    pollinationsModel: file.pollinationsModel || "flux",
+    pollinationsToken,
+    pollinationsReferrer: file.pollinationsReferrer || "image-forge",
+    geminiKeys: geminiKeys.map((k) => ({ exhaustedUntil: 0, ...k })),
+    geminiModel: process.env.GEMINI_IMAGE_MODEL || file.geminiModel || "nano-banana-2",
+    geminiImageSize: file.geminiImageSize || "1K",
+    cloudflare,
+    cloudflareSteps: Number(file.cloudflareSteps) || 4,
+    openaiKeys: openaiKeys.map((k) => ({ exhaustedUntil: 0, ...k })),
+    openaiBase: process.env.OPENAI_BASE_URL || file.openaiBase || "https://api.openai.com/v1",
+    openaiModel: process.env.OPENAI_IMAGE_MODEL || file.openaiModel || "gpt-image-1",
+    cooldowns: file.cooldowns && typeof file.cooldowns === "object" ? file.cooldowns : {},
+  };
+}
+
+const SETTINGS = loadSettings();
+
+/** Benching a key is per-process: the app owns the persisted cooldowns. */
+const exhaust = (poolName, keyId, untilMs) => {
+  const k = SETTINGS[poolName].find((x) => x.id === keyId);
+  if (k) k.exhaustedUntil = untilMs;
+};
+
+const cooldownMsFor = (row) => {
+  const def = findModel((row.model || "").trim()) || findModel(SETTINGS.pollinationsModel);
+  const id = def?.id;
+  const custom = id ? SETTINGS.cooldowns[id] : undefined;
+  const hours = typeof custom === "number" && custom >= 0 ? custom : def?.defaultCooldownH ?? 1;
+  return hours * 3600e3;
+};
 
 /* ---------------- tiny CSV ---------------- */
 
-function parseCsv(text) {
+/**
+ * RFC-4180-ish state machine. Deliberately byte-for-byte equivalent to
+ * parseCsv() in src/lib/csv.ts — tests/csv-parity.test.ts pins the two together
+ * so a file written by one side always reads back the same on the other.
+ */
+function parseCsv(input) {
+  const text = String(input).replace(/^﻿/, "");
   const rows = [];
   let row = [], cell = "", q = false;
   for (let i = 0; i < text.length; i++) {
@@ -60,7 +179,7 @@ function parseCsv(text) {
   row.push(cell);
   if (row.some((x) => x.trim() !== "")) rows.push(row);
   if (!rows.length) return { headers: COLUMNS, records: [] };
-  return { headers: rows[0].map((h) => h.trim().toLowerCase()), records: rows.slice(1) };
+  return { headers: rows[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, "_")), records: rows.slice(1) };
 }
 
 function toCsv(headers, records) {
@@ -92,24 +211,65 @@ const toRows = (m) =>
     return o;
   });
 
-/* ---------------- generation (free, keyless) ---------------- */
+/* ---------------- filenames ---------------- */
+
+/**
+ * Filenames arrive from agents, so they never touch the filesystem unchecked:
+ * strip any directory part, then hold the result to the app's own naming rule.
+ */
+export function safeFilename(raw) {
+  const name = String(raw || "").trim();
+  // Reject rather than silently rewrite: quietly turning "a/b/shop.png" into
+  // "shop.png" could collide with a different row that legitimately owns it.
+  if (/[/\\]/.test(name) || name.includes("..") || path.basename(name) !== name) {
+    throw new Error(`unsafe filename "${raw}" — a bare filename only, no path separators`);
+  }
+  if (!/^[a-z0-9][a-z0-9_]*\.png$/.test(name)) {
+    throw new Error(`unsafe filename "${raw}" — use lowercase a–z, 0–9 and underscores, ending in .png`);
+  }
+  return name;
+}
+
+/* ---------------- generation ---------------- */
 
 async function generateImage(row) {
-  const [w, h] = DIMS[row.aspect_ratio] || DIMS["16:9"];
-  const url =
-    "https://image.pollinations.ai/prompt/" + encodeURIComponent(row.prompt) +
-    `?width=${w}&height=${h}&seed=${row.seed || 1}&model=flux&nologo=true&safe=true` +
-    (row.negative_prompt ? `&negative=${encodeURIComponent(row.negative_prompt)}` : "");
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`pollinations said ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
+  const filename = safeFilename(row.filename);
+  const { bytes } = await generateBytes(
+    {
+      prompt: row.prompt,
+      negative_prompt: row.negative_prompt,
+      aspect_ratio: ASPECTS.includes(row.aspect_ratio) ? row.aspect_ratio : "1:1",
+      seed: Number(row.seed) || 1,
+      model: (row.model || "").trim(),
+    },
+    SETTINGS,
+    undefined,
+    exhaust,
+    cooldownMsFor(row)
+  );
   const folder = FOLDERS[row.category] || "items";
   const dir = path.join(OUT_DIR, folder);
   fs.mkdirSync(dir, { recursive: true });
-  const dest = path.join(dir, row.filename);
-  fs.writeFileSync(dest, buf);
+  const dest = path.join(dir, filename);
+  fs.writeFileSync(dest, bytes);
   return dest;
 }
+
+const describeEngine = () => {
+  const { engine, apiModel, def } = resolveRoute({ model: "" }, SETTINGS);
+  const cost = def ? (def.priceUsd === 0 ? "free" : `${formatUsd(def.priceUsd)} per image`) : "price unknown";
+  const wired = [
+    SETTINGS.cloudflare.accountId && SETTINGS.cloudflare.token ? "cloudflare ✓" : "cloudflare ✗",
+    SETTINGS.pollinationsToken ? "pollinations token ✓" : "pollinations token ✗",
+    `${SETTINGS.geminiKeys.length} google key(s)`,
+    `${SETTINGS.openaiKeys.length} endpoint key(s)`,
+  ].join(" · ");
+  return `default engine: ${engine} (${apiModel}) · ${cost}\n${wired}`;
+};
+
+/** Rows still aimed at a model the provider switched off. */
+const retiredRows = (rows) =>
+  rows.filter((r) => RETIRED_MODELS[(r.model || "").trim()]).map((r) => r.filename);
 
 /* ---------------- MCP server ---------------- */
 
@@ -118,63 +278,158 @@ const server = new Server(
   { capabilities: { tools: {} } }
 );
 
+/**
+ * Every tool declares BOTH a Zod schema (used to validate incoming arguments)
+ * and the JSON Schema the MCP wire format actually requires.
+ */
+const SCHEMAS = {
+  forge_status: z.object({}).strict(),
+  forge_list: z.object({ status: z.string().optional() }).strict(),
+  forge_add_row: z
+    .object({
+      filename: z.string(),
+      prompt: z.string().min(1),
+      negative_prompt: z.string().optional(),
+      category: z.enum(CATEGORIES).default("item"),
+      aspect_ratio: z.enum(ASPECTS).default("1:1"),
+      seed: z.number().int().min(1).max(SEED_MAX).optional(),
+      model: z.enum(MODEL_IDS).optional(),
+    })
+    .strict(),
+  forge_generate_pending: z.object({ limit: z.number().int().min(1).optional() }).strict(),
+  forge_generate_one: z.object({ filename: z.string() }).strict(),
+  forge_retry_failed: z.object({}).strict(),
+  forge_fix_retired: z.object({}).strict(),
+  forge_models: z.object({}).strict(),
+};
+
+const obj = (properties = {}, required = []) => ({
+  type: "object",
+  properties,
+  required,
+  additionalProperties: false,
+});
+
 const TOOLS = [
   {
     name: "forge_status",
-    description: "Summarize the image manifest: how many pending, done, failed, etc.",
-    inputSchema: z.object({}).shape,
+    description: "Summarize the image manifest: how many pending, done, failed, etc. Also reports which engine is wired up.",
+    inputSchema: obj(),
   },
   {
     name: "forge_list",
     description: "List manifest rows (filename, category, status). Optional status filter.",
-    inputSchema: z.object({ status: z.string().optional() }).shape,
+    inputSchema: obj({ status: { type: "string", description: "pending | generating | done | failed | imported" } }),
   },
   {
     name: "forge_add_row",
     description: "Add a picture idea to the manifest.",
-    inputSchema: z.object({
-      filename: z.string().describe("lowercase, underscores, e.g. shop_bakery.png"),
-      prompt: z.string(),
-      negative_prompt: z.string().optional(),
-      category: z.enum(["shop", "item", "event", "npc"]).default("item"),
-      aspect_ratio: z.enum(["16:9", "1:1", "9:16", "4:3"]).default("1:1"),
-      seed: z.number().optional(),
-    }).shape,
+    inputSchema: obj(
+      {
+        filename: { type: "string", description: "lowercase, underscores, e.g. shop_bakery.png" },
+        prompt: { type: "string" },
+        negative_prompt: { type: "string" },
+        category: { type: "string", enum: CATEGORIES, default: "item" },
+        aspect_ratio: { type: "string", enum: ASPECTS, default: "1:1" },
+        seed: { type: "integer", minimum: 1, maximum: SEED_MAX },
+        model: { type: "string", enum: MODEL_IDS, description: "leave empty to use the server's default engine" },
+      },
+      ["filename", "prompt"]
+    ),
   },
   {
     name: "forge_generate_pending",
-    description: "Generate images for all pending rows using the free Pollinations endpoint. Writes PNGs to disk and marks rows done.",
-    inputSchema: z.object({ limit: z.number().optional().describe("max rows to generate") }).shape,
+    description: "Generate images for all pending rows through the configured engine (keyless Pollinations unless keys are supplied). Writes PNGs to disk and marks rows done.",
+    inputSchema: obj({ limit: { type: "integer", minimum: 1, description: "max rows to generate" } }),
   },
   {
     name: "forge_generate_one",
     description: "Generate a single row by filename.",
-    inputSchema: z.object({ filename: z.string() }).shape,
+    inputSchema: obj({ filename: { type: "string" } }, ["filename"]),
   },
   {
     name: "forge_retry_failed",
     description: "Reset all failed rows back to pending so they can be generated again.",
-    inputSchema: z.object({}).shape,
+    inputSchema: obj(),
+  },
+  {
+    name: "forge_fix_retired",
+    description:
+      "Move any row still pointing at a model the provider switched off (the Imagen models Google retired on 2026-08-17) onto its current replacement.",
+    inputSchema: obj(),
+  },
+  {
+    name: "forge_models",
+    description: "List every available model with its price per image, batch price, and free allowance.",
+    inputSchema: obj(),
   },
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { name, arguments: a = {} } = req.params;
+  const { name, arguments: rawArgs = {} } = req.params;
+  const text = (s, isError = false) => ({ content: [{ type: "text", text: s }], ...(isError ? { isError: true } : {}) });
+
+  const schema = SCHEMAS[name];
+  if (!schema) return text(`unknown tool: ${name}`, true);
+  const parsed = schema.safeParse(rawArgs);
+  if (!parsed.success) {
+    const why = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
+    return text(`bad arguments for ${name} — ${why}`, true);
+  }
+  const a = parsed.data;
   const m = loadManifest();
-  const text = (s) => ({ content: [{ type: "text", text: s }] });
 
   try {
     switch (name) {
       case "forge_status": {
         const rows = toRows(m);
         const by = (s) => rows.filter((r) => r.status === s).length;
+        const pending = rows.filter((r) => (r.status || "pending") === "pending");
+        const { total, unknown } = estimateCost(pending, SETTINGS);
+        const costLine =
+          pending.length === 0
+            ? "nothing pending"
+            : `generating the ${pending.length} pending row(s) would cost ${formatUsd(total)}` +
+              (unknown ? ` (+${unknown} row(s) at an unknown price)` : "");
+        const stale = retiredRows(rows);
         return text(
           `manifest: ${CSV_PATH}\n` +
           `total=${rows.length} pending=${by("pending")} done=${by("done")} ` +
           `failed=${by("failed")} generating=${by("generating")} imported=${by("imported")}\n` +
-          `output folder: ${OUT_DIR}`
+          `output folder: ${OUT_DIR}\n` +
+          `${describeEngine()}\n` +
+          `${costLine}` +
+          (stale.length
+            ? `\n⚠ ${stale.length} row(s) still use a model the provider switched off: ${stale.slice(0, 5).join(", ")}` +
+              `${stale.length > 5 ? "…" : ""}. Use forge_fix_retired to move them.`
+            : "")
+        );
+      }
+      case "forge_fix_retired": {
+        let n = 0;
+        const changes = [];
+        for (const rec of m.records) {
+          const model = (get(m.headers, rec, "model") || "").trim();
+          const info = RETIRED_MODELS[model];
+          if (!info) continue;
+          set(m.headers, rec, "model", info.replacedBy);
+          changes.push(`${get(m.headers, rec, "filename")}: ${model} → ${info.replacedBy}`);
+          n++;
+        }
+        if (!n) return text("no rows are using a retired model");
+        saveManifest(m);
+        return text(`moved ${n} row(s) onto current models:\n${changes.slice(0, 20).join("\n")}`);
+      }
+      case "forge_models": {
+        return text(
+          MODELS.map((mo) => {
+            const price = mo.priceUsd === 0 ? "free" : `${formatUsd(mo.priceUsd)}/image`;
+            const batch = mo.batchPriceUsd !== null ? ` · batch ${formatUsd(mo.batchPriceUsd)}` : "";
+            const retires = mo.retiresOn ? ` · RETIRES ${mo.retiresOn}` : "";
+            return `${mo.id} — ${mo.label} · ${price}${batch} · ${mo.allowance}${retires}\n    ${mo.note}`;
+          }).join("\n")
         );
       }
       case "forge_list": {
@@ -184,19 +439,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return text(rows.map((r) => `${r.filename} [${r.category}] ${r.status || "pending"}`).join("\n"));
       }
       case "forge_add_row": {
+        const filename = safeFilename(a.filename);
+        if (toRows(m).some((r) => r.filename === filename)) return text(`${filename} is already in the manifest`, true);
         const maxId = toRows(m).reduce((mx, r) => Math.max(mx, parseInt(r.id) || 0), 0);
         const rec = [];
         set(m.headers, rec, "id", String(maxId + 1));
-        set(m.headers, rec, "filename", a.filename);
+        set(m.headers, rec, "filename", filename);
         set(m.headers, rec, "prompt", a.prompt);
         set(m.headers, rec, "negative_prompt", a.negative_prompt || "");
         set(m.headers, rec, "category", a.category);
         set(m.headers, rec, "aspect_ratio", a.aspect_ratio);
-        set(m.headers, rec, "seed", String(a.seed || Math.floor(Math.random() * 98) + 1));
+        set(m.headers, rec, "seed", String(a.seed || Math.floor(Math.random() * SEED_MAX) + 1));
+        set(m.headers, rec, "model", a.model || "");
         set(m.headers, rec, "status", "pending");
         m.records.push(rec);
         saveManifest(m);
-        return text(`added ${a.filename} (id ${maxId + 1}) as pending`);
+        return text(`added ${filename} (id ${maxId + 1}) as pending`);
       }
       case "forge_generate_pending": {
         let rows = toRows(m).filter((r) => (r.status || "pending") === "pending");
@@ -216,27 +474,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             set(m.headers, rec, "status", "failed");
             set(m.headers, rec, "error", String(e.message || e).slice(0, 120));
             results.push(`✗ ${r.filename} — ${e.message || e}`);
+            if (e instanceof RateLimitError) {
+              results.push("· every key is benched — stopping this run early");
+              saveManifest(m);
+              break;
+            }
+            if (e instanceof RetiredModelError) {
+              results.push("· stopping — run forge_fix_retired to move these rows onto a current model");
+              saveManifest(m);
+              break;
+            }
           }
           saveManifest(m);
         }
         return text(results.join("\n"));
       }
       case "forge_generate_one": {
-        const rec = m.records.find((x) => get(m.headers, x, "filename") === a.filename);
-        if (!rec) return text(`no row named ${a.filename}`);
-        const row = toRows(m).find((r) => r.filename === a.filename);
+        const filename = safeFilename(a.filename);
+        const rec = m.records.find((x) => get(m.headers, x, "filename") === filename);
+        if (!rec) return text(`no row named ${filename}`, true);
+        const row = toRows(m).find((r) => r.filename === filename);
         try {
           const dest = await generateImage(row);
           set(m.headers, rec, "status", "done");
           set(m.headers, rec, "generated_at", new Date().toISOString());
           set(m.headers, rec, "error", "");
           saveManifest(m);
-          return text(`✓ ${a.filename} → ${dest}`);
+          return text(`✓ ${filename} → ${dest}`);
         } catch (e) {
           set(m.headers, rec, "status", "failed");
           set(m.headers, rec, "error", String(e.message || e).slice(0, 120));
           saveManifest(m);
-          return text(`✗ ${a.filename} — ${e.message || e}`);
+          return text(`✗ ${filename} — ${e.message || e}`, true);
         }
       }
       case "forge_retry_failed": {
@@ -252,13 +521,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return text(n ? `reset ${n} failed row(s) to pending` : "no failed rows");
       }
       default:
-        return text(`unknown tool: ${name}`);
+        return text(`unknown tool: ${name}`, true);
     }
   } catch (e) {
-    return text(`error: ${e.message || e}`);
+    return text(`error: ${e.message || e}`, true);
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-// (runs until the host closes the connection)
+export { parseCsv, toCsv, TOOLS, SCHEMAS };
+
+/* Only speak MCP when run as a program — importing this file (tests) must not connect. */
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  // (runs until the host closes the connection)
+}

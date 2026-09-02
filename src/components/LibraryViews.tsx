@@ -35,11 +35,14 @@ export function ImageLibrary({
   batches,
   updateRow,
   onRedo,
+  onMakeGif,
 }: {
   rows: ManifestRow[];
   batches: Batch[];
   updateRow: (id: number, patch: Partial<ManifestRow>) => void;
   onRedo: (ids: number[]) => void;
+  /** offered only for finished pictures whose bytes we still hold */
+  onMakeGif?: (row: ManifestRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState<Category | "all">("all");
@@ -174,6 +177,16 @@ export function ImageLibrary({
                   <Btn variant="ghost" className="flex-1 justify-center !px-2 !py-1.5 !text-[11px]" onClick={() => onRedo([r.id])}>
                     <IHammer size={11} /> Redo
                   </Btn>
+                  {onMakeGif && (r.status === "done" || r.status === "imported") && (
+                    <Btn
+                      variant="ghost"
+                      className="flex-1 justify-center !px-2 !py-1.5 !text-[11px]"
+                      onClick={() => onMakeGif(r)}
+                      title="animate this picture into a looping GIF"
+                    >
+                      ▸ GIF
+                    </Btn>
+                  )}
                 </div>
               </div>
             </BorderGlow>

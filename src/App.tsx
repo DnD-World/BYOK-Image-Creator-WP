@@ -8,6 +8,11 @@ import { renderPreview } from "./lib/preview";
 import { styleDriftCount, violationCount } from "./lib/validate";
 import {
   RateLimitError,
+  RETIRED_MODELS,
+  estimateCost,
+  textQualityFor,
+  findModel,
+  formatUsd,
   bumpUsage,
   cooldownHoursFor,
   generateReal,
@@ -31,6 +36,10 @@ import {
 } from "./lib/output";
 import type { Batch, BatchSetup, FactoryItem, SavedSetup } from "./lib/batches";
 import { factoryToRows, loadBatches, loadSetups, saveBatches, saveSetups, uid } from "./lib/batches";
+import { measureStorage, safeSet, storageWarning, type SaveResult } from "./lib/storage";
+import { tailorPrompt } from "./lib/promptTailor";
+import { styleById } from "./lib/styleCatalogue";
+import { checkBatch, collectBatch, describeJob, submitBatch } from "./lib/geminiBatch.mjs";
 import {
   clearTauriFolder,
   isTauri,
@@ -50,6 +59,7 @@ import WizardView from "./components/WizardView";
 import PromptFactory from "./components/PromptFactory";
 import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./components/LibraryViews";
 import WpImportModal from "./components/WpImportModal";
+import GifMaker from "./components/GifMaker";
 import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
@@ -122,6 +132,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [wizardPreset, setWizardPreset] = useState<SavedSetup | null>(null);
   const [factoryItems, setFactoryItems] = useState<FactoryItem[]>([]);
   const [compare, setCompare] = useState<null | { rowId: number; variantSeed: number; variant: string }>(null);
+  const [gifFor, setGifFor] = useState<null | { row: ManifestRow; blob: Blob }>(null);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -132,22 +143,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const tauriFolderRef = useRef<string | null>(null);
   const imagesRef = useRef<Map<string, Blob>>(new Map());
   const toastId = useRef(1);
-
-  /* ---------- persistence (debounced — a run mutates rows many times per second) ---------- */
-  useEffect(() => {
-    const t = setTimeout(() => {
-      try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ rows: rows.map(({ preview: _p, ...r }) => r), styleLock, appendStyle }));
-      } catch { /* storage full — non-fatal */ }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [rows, styleLock, appendStyle]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
-    } catch { /* non-fatal */ }
-  }, [settings]);
+  /** set once repairForge exists, so the load-time warning can offer to run it */
+  const repairForgeRef = useRef<null | (() => void)>(null);
 
   useEffect(() => saveBatches(batches), [batches]);
   useEffect(() => saveSetups(setups), [setups]);
@@ -195,6 +192,57 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
 
   const pushLog = useCallback((msg: string, kind: LogEntry["kind"]) => {
     setLog((l) => [...l.slice(-90), { t: nowTime(), msg, kind }]);
+  }, []);
+
+  /* ---------- persistence (debounced — a run mutates rows many times per second) ----------
+     A failed save used to be swallowed, so a full storage box quietly ate your
+     work. Now it shouts once, and keeps quiet until the situation changes. */
+  const storageAlarmRef = useRef<string>("");
+  const announceSave = useCallback(
+    (res: SaveResult) => {
+      if (res.ok) {
+        if (storageAlarmRef.current) storageAlarmRef.current = "";
+        return;
+      }
+      if (storageAlarmRef.current === res.reason) return;
+      storageAlarmRef.current = res.reason;
+      pushToast("err", res.message);
+      pushLog(`⚠ ${res.message}`, "err");
+    },
+    [pushLog, pushToast]
+  );
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      announceSave(
+        safeSet(LS_KEY, JSON.stringify({ rows: rows.map(({ preview: _p, ...r }) => r), styleLock, appendStyle }))
+      );
+    }, 350);
+    return () => clearTimeout(t);
+  }, [rows, styleLock, appendStyle, announceSave]);
+
+  useEffect(() => {
+    announceSave(safeSet(LS_SETTINGS, JSON.stringify(settings)));
+  }, [settings, announceSave]);
+
+  /* Once on load: say if the storage box is filling, and if any row is aimed at
+     a model the provider has since switched off. Both bite silently otherwise. */
+  useEffect(() => {
+    const warning = storageWarning(measureStorage(), settings.storageWarnAtPct);
+    if (warning) {
+      pushToast("info", warning);
+      pushLog(`· ${warning}`, "info");
+    }
+    const stale = rowsRef.current.filter((r) => RETIRED_MODELS[(r.model || "").trim()]);
+    if (stale.length) {
+      const msg =
+        `${stale.length} row${stale.length > 1 ? "s" : ""} still use a model the provider switched off — ` +
+        `they will fail until they are moved.`;
+      pushLog(`⚠ ${msg} Settings → Advanced → Repair moves them.`, "err");
+      pushToast("err", msg, { label: "Fix them", run: () => repairForgeRef.current?.() });
+    }
+    // deliberately once on mount — a nag on every change would be unbearable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const patchRow = useCallback((id: number, patch: Partial<ManifestRow>) => {
@@ -312,13 +360,42 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         STYLES.find((x) => x.id === row.style)?.block ??
         settingsRef.current.customStyles.find((x) => x.id === row.style)?.block ??
         "";
-      const prompt =
+      let prompt =
         appendStyle && styleBlockFor && !row.prompt.includes(styleBlockFor)
           ? `${row.prompt}, ${styleBlockFor}`
           : row.prompt;
 
+      // Each style carries its own negatives — "no photographic sheen" for clay,
+      // "no colour" for line art — merged with whatever the row already asks to avoid.
+      const styleDef = styleById(row.style);
+      const negative_prompt = [row.negative_prompt?.trim(), styleDef?.negative]
+        .filter(Boolean)
+        .join(", ");
+
+      // A style built around readable words on a model that cannot spell will
+      // disappoint. Say so once, rather than letting it fail quietly.
+      if (styleDef?.needsText && textQualityFor(row, s) !== "good") {
+        pushLog(
+          `⚠ ${row.filename}: the “${styleDef.name}” look needs readable words, but ${route.apiModel} cannot spell. ` +
+            `Use a Google model or DALL·E for this one.`,
+          "err"
+        );
+      }
+
+      // Optional, off by default: let your text model reshape the prompt to
+      // suit whichever painter is about to draw it.
+      if (s.tailorPrompts) {
+        const tailored = await tailorPrompt({ ...row, prompt }, s);
+        if (tailored.problem) {
+          pushLog(`· prompt tailor skipped — ${tailored.problem}`, "info");
+        } else if (tailored.changed) {
+          prompt = tailored.prompt;
+          pushLog(`✎ prompt tailored for ${route.apiModel}`, "info");
+        }
+      }
+
       try {
-        const { blob, dataUrl } = await generateReal({ ...row, prompt }, s, undefined, exhaust, cdH * 3600e3);
+        const { blob, dataUrl } = await generateReal({ ...row, prompt, negative_prompt }, s, undefined, exhaust, cdH * 3600e3);
         if (halted()) {
           setRows((prev) => prev.map((r) => (r.id === id && r.status === "generating" ? { ...r, status: "pending" } : r)));
           pushLog(`· ${row.filename} halted mid-strike`, "info");
@@ -362,22 +439,55 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       if (ids.length === 0) return;
       stopRef.current = false;
       setIsRunning(true);
-      pushLog(`── forge lit · ${ids.length} row${ids.length > 1 ? "s" : ""} in the queue ──`, "info");
+
+      const queued = ids
+        .map((id) => rowsRef.current.find((r) => r.id === id))
+        .filter((r): r is ManifestRow => Boolean(r));
+      const { total, unknown } = estimateCost(queued, settingsRef.current);
+      const lanes = Math.min(Math.max(settingsRef.current.concurrency || 1, 1), 6);
+      pushLog(
+        `── forge lit · ${ids.length} row${ids.length > 1 ? "s" : ""} in the queue` +
+          (lanes > 1 ? ` · ${lanes} at a time` : "") +
+          ` · ${total > 0 ? `about ${formatUsd(total)}` : "free"}${unknown ? ` (+${unknown} unpriced)` : ""} ──`,
+        "info"
+      );
+
       let done = 0;
       let failed = 0;
-      for (const id of ids) {
-        if (stopRef.current) break;
-        const row = rowsRef.current.find((r) => r.id === id);
-        if (!row) continue;
-        if (!targets && row.retry_at && Date.parse(row.retry_at) > Date.now()) {
-          pushLog(`· ${row.filename} cooling — retries ${new Date(row.retry_at).toLocaleString("en-GB")}`, "info");
-          continue;
+
+      /* Rows are handed out one at a time to however many lanes are running, so
+         a slow picture never blocks the others and "stop" still lands quickly. */
+      let cursor = 0;
+      const takeNext = (): number | null => {
+        while (cursor < ids.length) {
+          const id = ids[cursor++];
+          const row = rowsRef.current.find((r) => r.id === id);
+          if (!row) continue;
+          if (!targets && row.retry_at && Date.parse(row.retry_at) > Date.now()) {
+            pushLog(`· ${row.filename} cooling — retries ${new Date(row.retry_at).toLocaleString("en-GB")}`, "info");
+            continue;
+          }
+          return id;
         }
-        const res = await strike(id);
-        if (res === "done") done++;
-        else if (res === "failed" || res === "parked") failed++;
-        else if (res === "stopped") break;
-      }
+        return null;
+      };
+
+      const lane = async () => {
+        for (;;) {
+          if (stopRef.current) return;
+          const id = takeNext();
+          if (id === null) return;
+          const res = await strike(id);
+          if (res === "done") done++;
+          else if (res === "failed" || res === "parked") failed++;
+          else if (res === "stopped") {
+            stopRef.current = true;
+            return;
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: lanes }, lane));
       setIsRunning(false);
       const halted = stopRef.current;
       pushLog(`── run ${halted ? "halted" : "complete"} · ${done} struck · ${failed} failed ──`, failed > 0 ? "err" : "ok");
@@ -750,8 +860,15 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     const stuck = rowsRef.current.filter((r) => r.status === "generating").length;
     if (stuck) fixes.push(`${stuck} stuck row${stuck > 1 ? "s" : ""} back to pending`);
     const seen = new Set<string>();
+    let moved = 0;
     const repaired = rowsRef.current.map((r) => {
       let out = r.status === "generating" ? { ...r, status: "pending" as Status } : r;
+      // Rows saved before a provider retired a model would fail forever.
+      const gone = RETIRED_MODELS[(out.model || "").trim()];
+      if (gone) {
+        out = { ...out, model: gone.replacedBy };
+        moved++;
+      }
       if (seen.has(out.filename)) {
         const stem = out.filename.replace(/\.png$/, "");
         let n = 2;
@@ -762,6 +879,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       seen.add(out.filename);
       return out;
     });
+    if (moved) fixes.push(`${moved} row${moved > 1 ? "s" : ""} moved off a model the provider switched off`);
     setRows(repaired);
     let folderOk = false;
     const tRoot = tauriFolderRef.current;
@@ -785,6 +903,112 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       fixes.length ? `Repair done — ${fixes.length} fix${fixes.length > 1 ? "es" : ""} applied.` : "Repair checked everything — the forge is healthy."
     );
   }, [pushLog, pushToast]);
+
+  /* ---------- batch jobs: the same pictures for half the money ---------- */
+
+  const sendBatch = useCallback(async () => {
+    const s = settingsRef.current;
+    const pending = rowsRef.current.filter((r) => r.status === "pending" || r.status === "failed");
+    if (!pending.length) {
+      pushToast("info", "Nothing pending to send.");
+      return;
+    }
+    const modelId = findModel((pending[0].model || "").trim())?.id ?? s.geminiModel;
+    const def = findModel(modelId);
+    if (!def || def.engine !== "gemini" || def.batchPriceUsd === null) {
+      pushToast("err", "Batch jobs are a Google feature — set those rows to a Nano Banana model first.");
+      return;
+    }
+    const apiKey = s.geminiKeys.find((k) => k.key.trim())?.key ?? "";
+    if (!apiKey.trim()) {
+      pushToast("err", "Add a Google key in Settings → Engines before sending a batch.");
+      return;
+    }
+    const { total } = estimateCost(pending, s, { batch: true });
+    try {
+      pushLog(`── sending ${pending.length} row(s) to Google as one batch · about ${formatUsd(total)} ──`, "info");
+      const job = await submitBatch(pending, { apiKey, modelId, imageSize: s.geminiImageSize });
+      patchSettings({ batchJobs: [...s.batchJobs, job] });
+      setRows((prev) =>
+        prev.map((r) => (pending.some((p) => p.id === r.id) ? { ...r, status: "generating" as Status, error: "" } : r))
+      );
+      pushLog(`⤒ batch accepted — ${describeJob(job)}. Come back and press "Check batches".`, "ok");
+      pushToast("ok", `Batch sent — ${pending.length} pictures for about ${formatUsd(total)}. Usually well under an hour.`);
+    } catch (e) {
+      const msg = (e as { message?: string })?.message ?? "unknown";
+      pushLog(`✗ batch refused — ${msg}`, "err");
+      pushToast("err", `Batch refused — ${msg}`);
+    }
+  }, [patchSettings, pushLog, pushToast]);
+
+  const checkBatches = useCallback(async () => {
+    const s = settingsRef.current;
+    if (!s.batchJobs.length) {
+      pushToast("info", "No batches are waiting.");
+      return;
+    }
+    const apiKey = s.geminiKeys.find((k) => k.key.trim())?.key ?? "";
+    if (!apiKey.trim()) {
+      pushToast("err", "Add a Google key to check on your batches.");
+      return;
+    }
+    const stillWaiting: typeof s.batchJobs = [];
+    for (const job of s.batchJobs) {
+      try {
+        const status = await checkBatch(job.name, apiKey);
+        if (!status.done && !status.failed) {
+          pushLog(`· ${describeJob(job)} — ${status.label}`, "info");
+          stillWaiting.push({ ...job, state: status.state, lastCheckedAt: new Date().toISOString() });
+          continue;
+        }
+        if (status.failed) {
+          pushLog(`✗ ${describeJob(job)} — ${status.label}`, "err");
+          setRows((prev) =>
+            prev.map((r) => (job.filenames.includes(r.filename) ? { ...r, status: "failed" as Status, error: status.label } : r))
+          );
+          continue;
+        }
+        const { images, failures } = collectBatch(status.raw, job.filenames);
+        for (const img of images) {
+          const blob = new Blob([img.bytes], { type: img.mime });
+          const row = rowsRef.current.find((r) => r.filename === img.filename);
+          if (!row) continue;
+          imagesRef.current.set(img.filename, blob);
+          await saveToFolder(row, blob);
+          patchRow(row.id, { status: "done", generated_at: new Date().toISOString(), error: "" });
+        }
+        for (const f of failures) {
+          const row = rowsRef.current.find((r) => r.filename === f.filename);
+          if (row) patchRow(row.id, { status: "failed", error: f.error.slice(0, 140) });
+        }
+        pushLog(`✓ batch collected — ${images.length} struck, ${failures.length} failed`, failures.length ? "err" : "ok");
+        pushToast("ok", `Batch back: ${images.length} pictures saved.`);
+      } catch (e) {
+        const msg = (e as { message?: string })?.message ?? "unknown";
+        pushLog(`✗ could not check a batch — ${msg}`, "err");
+        stillWaiting.push(job);
+      }
+    }
+    patchSettings({ batchJobs: stillWaiting });
+  }, [patchRow, patchSettings, pushLog, pushToast, saveToFolder]);
+
+  /** Open the GIF maker for a finished row, if we still hold its picture. */
+  const openGifMaker = useCallback(
+    (row: ManifestRow) => {
+      const blob = imagesRef.current.get(row.filename);
+      if (!blob) {
+        pushToast(
+          "info",
+          "That picture is not in memory any more — press Redo to make it again, then turn it into a GIF."
+        );
+        return;
+      }
+      setGifFor({ row, blob });
+    },
+    [pushToast]
+  );
+
+  repairForgeRef.current = repairForge;
 
   const backupAll = useCallback(() => {
     const keys = [LS_KEY, LS_SETTINGS, "image-forge-setups-v1", "image-forge-batches-v1", "emberfair-v1"];
@@ -965,6 +1189,12 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const drift = useMemo(() => styleDriftCount(rows, styleLock), [rows, styleLock]);
   const violations = useMemo(() => violationCount(rows), [rows]);
   const queueLen = rows.filter((r) => r.status === "pending" || r.status === "failed").length;
+  /* Batch is a Google-only trick, so only offer it when the waiting rows can use it. */
+  const batchable = rows.filter((r) => {
+    if (r.status !== "pending" && r.status !== "failed") return false;
+    const def = findModel((r.model || "").trim()) ?? findModel(settings.geminiModel);
+    return def?.engine === "gemini" && def.batchPriceUsd !== null;
+  }).length;
   const doneCount = rows.filter((r) => r.status === "done").length;
   const finishedCount = doneCount + rows.filter((r) => r.status === "imported").length;
   const markedCount = rows.filter((r) => r.status === "failed" || ((r.note ?? "").trim() !== "" && (r.status === "done" || r.status === "imported"))).length;
@@ -1087,6 +1317,25 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           <span className="hidden font-mono text-[10.5px] text-dust xl:block">
             {queueLen > 0 ? `${queueLen} awaiting the hammer` : coolingCount > 0 ? `${coolingCount} cooling` : "queue clear"}
           </span>
+          {settings.batchJobs.length > 0 && (
+            <button
+              onClick={() => void checkBatches()}
+              className="btn-press hidden items-center gap-1.5 rounded-lg border border-moss/50 bg-moss/10 px-3 py-2 text-[12px] font-semibold text-moss lg:flex"
+              title="Ask Google whether your half-price batches are finished"
+            >
+              Check batches · {settings.batchJobs.length}
+            </button>
+          )}
+          {batchable > 0 && (
+            <button
+              onClick={() => void sendBatch()}
+              disabled={isRunning}
+              className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-3 py-2 text-[12px] font-semibold text-parch hover:text-cream disabled:opacity-35 xl:flex"
+              title="Send these to Google as one background job at half price — usually back within the hour"
+            >
+              Batch · half price
+            </button>
+          )}
           <button
             onClick={() => runQueue()}
             disabled={isRunning || queueLen === 0}
@@ -1235,7 +1484,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           </main>
         ) : view === "lib-images" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
-            <ImageLibrary rows={rows} batches={batches} updateRow={patchRow} onRedo={rerunMarked} />
+            <ImageLibrary rows={rows} batches={batches} updateRow={patchRow} onRedo={rerunMarked} onMakeGif={openGifMaker} />
           </main>
         ) : view === "lib-styles" ? (
           <main className="min-w-0 flex-1 overflow-y-auto">
@@ -1293,6 +1542,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               onCheckUpdate={checkForUpdate}
               appVersion={APP_VERSION}
               pushToast={pushToast}
+              styleLock={styleLock}
+              onLockStyle={setStyleLock}
             />
           </main>
         ) : view === "docs" ? (
@@ -1321,6 +1572,30 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           styleLock={styleLock}
           onClose={() => setScribeId(null)}
           onPatch={(patch) => patchRow(scribeRow.id, patch)}
+          pushToast={pushToast}
+        />
+      )}
+
+      {gifFor && (
+        <GifMaker
+          row={gifFor.row}
+          blob={gifFor.blob}
+          settings={settings}
+          onClose={() => setGifFor(null)}
+          onSaved={async (name, gif) => {
+            // drop it beside the picture it came from, if a folder is linked
+            const tRoot = tauriFolderRef.current;
+            // the writers take a row and use its filename, so hand them the .gif name
+            const asGif = { ...gifFor.row, filename: name };
+            try {
+              if (isTauri() && tRoot) await tauriWriteImage(tRoot, asGif, gif);
+              else if (folderRef.current) await writeImageFile(folderRef.current, asGif, gif);
+              else return;
+              pushLog(`⤓ ${name} written beside ${gifFor.row.filename}`, "ok");
+            } catch {
+              pushLog(`⚠ could not write ${name} into the linked folder`, "err");
+            }
+          }}
           pushToast={pushToast}
         />
       )}

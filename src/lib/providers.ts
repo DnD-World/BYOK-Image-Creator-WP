@@ -1,18 +1,46 @@
 import type { ManifestRow, Toast } from "../types";
-import { ASPECTS, STYLES } from "../types";
+import { STYLES } from "../types";
 import { blobToDataUrl } from "./output";
+import {
+  generateBytes,
+  MODELS,
+  RETIRED_MODELS,
+  findModel,
+  resolveRoute,
+  RateLimitError,
+  RetiredModelError,
+  priceFor,
+  estimateCost,
+  formatUsd,
+  MODEL_TRAITS,
+  NO_TEXT_NEGATIVE,
+  textQualityFor,
+  promptStyleFor,
+  suppressTextIfWeak,
+} from "./engines.mjs";
+import type { ApiKey, Exhaust, ModelDef, ProviderId, TextQuality } from "./engines.mjs";
 
-export type ProviderId = "simulated" | "pollinations" | "imagen" | "openai";
+/* The engines themselves (routing, prices, key rotation, network) live in the
+   shared, DOM-free engines.mjs so the MCP server uses the exact same code. */
+export {
+  MODELS,
+  RETIRED_MODELS,
+  findModel,
+  resolveRoute,
+  RateLimitError,
+  RetiredModelError,
+  priceFor,
+  estimateCost,
+  formatUsd,
+  MODEL_TRAITS,
+  NO_TEXT_NEGATIVE,
+  textQualityFor,
+  promptStyleFor,
+  suppressTextIfWeak,
+};
+export type { ApiKey, Exhaust, ModelDef, ProviderId, TextQuality };
 
 /* ---------------- keys & settings ---------------- */
-
-export interface ApiKey {
-  id: string;
-  label: string;
-  key: string;
-  /** epoch ms until which this key is benched after a 429; 0 = healthy */
-  exhaustedUntil: number;
-}
 
 export const newKey = (label: string): ApiKey => ({
   id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -21,13 +49,47 @@ export const newKey = (label: string): ApiKey => ({
   exhaustedUntil: 0,
 });
 
+/** A batch job sent to Google and waiting to come back. */
+export interface BatchJob {
+  name: string;
+  model: string;
+  count: number;
+  filenames: string[];
+  submittedAt: string;
+  state?: string;
+  lastCheckedAt?: string;
+}
+
 export interface ForgeSettings {
   provider: ProviderId;
   pollinationsModel: string;
+  /** free token from auth.pollinations.ai — anonymous use is bot-checked now */
+  pollinationsToken: string;
+  pollinationsReferrer: string;
   geminiKeys: ApiKey[];
+  geminiModel: string;
+  geminiImageSize: string;
+  cloudflare: { accountId: string; token: string };
+  cloudflareSteps: number;
   openaiKeys: ApiKey[];
   openaiBase: string;
   openaiModel: string;
+  /** a model running on your own machine: LocalAI, ComfyUI, LM Studio, SD WebUI */
+  localBase: string;
+  localModel: string;
+  localKey: string;
+  /** how good YOUR local model is at writing words inside a picture */
+  localTextQuality: TextQuality;
+  /** tell models that cannot write not to try — on by default */
+  suppressTextOnWeakModels: boolean;
+  /** rewrite each prompt to suit the model, using your text engine. Off unless you ask. */
+  tailorPrompts: boolean;
+  /** how many images to draw at once; 1 = one at a time, as it has always been */
+  concurrency: number;
+  /** batch jobs sent to Google that have not been collected yet */
+  batchJobs: BatchJob[];
+  /** warn before the browser's storage box fills up and starts dropping data */
+  storageWarnAtPct: number;
   scribe: { base: string; key: string; model: string };
   cooldowns: Record<string, number>;
   usage: Record<string, { day: string; used: number }>;
@@ -54,10 +116,25 @@ export interface ForgeSettings {
 export const DEFAULT_SETTINGS: ForgeSettings = {
   provider: "simulated",
   pollinationsModel: "flux",
+  pollinationsToken: "",
+  pollinationsReferrer: "image-forge",
   geminiKeys: [newKey("key-1")],
+  geminiModel: "nano-banana-2",
+  geminiImageSize: "1K",
+  cloudflare: { accountId: "", token: "" },
+  cloudflareSteps: 4,
   openaiKeys: [newKey("key-1")],
   openaiBase: "https://api.openai.com/v1",
   openaiModel: "gpt-image-1",
+  localBase: "http://localhost:8080/v1",
+  localModel: "flux.2-klein-4b",
+  localKey: "",
+  localTextQuality: "poor",
+  suppressTextOnWeakModels: true,
+  tailorPrompts: false,
+  concurrency: 1,
+  batchJobs: [],
+  storageWarnAtPct: 70,
   scribe: { base: "https://api.openai.com/v1", key: "", model: "gpt-4o-mini" },
   cooldowns: {},
   usage: {},
@@ -80,9 +157,18 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
 };
 
 export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
+  // Google retired the Imagen endpoints on 2026-08-17, so anyone whose saved
+  // settings still say "imagen" gets moved to its replacement automatically.
+  const legacyProvider = (s as { provider?: string }).provider;
+  const provider = (legacyProvider === "imagen" ? "gemini" : legacyProvider) as ProviderId | undefined;
+
   return {
     ...DEFAULT_SETTINGS,
     ...s,
+    ...(provider ? { provider } : {}),
+    cloudflare: { ...DEFAULT_SETTINGS.cloudflare, ...(s.cloudflare ?? {}) },
+    batchJobs: Array.isArray(s.batchJobs) ? s.batchJobs : [],
+    concurrency: Math.min(Math.max(Number(s.concurrency) || 1, 1), 8),
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },
@@ -103,28 +189,8 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
   };
 }
 
-/* ---------------- model registry ---------------- */
+/* ---------------- model registry (defined in engines.mjs) ---------------- */
 
-export interface ModelDef {
-  id: string;
-  engine: ProviderId;
-  apiId: string;
-  free: string;
-  defaultCooldownH: number;
-}
-
-export const MODELS: ModelDef[] = [
-  { id: "imagen-4-ultra", engine: "imagen", apiId: "imagen-4.0-ultra-generate-001", free: "≈ 25 images/day", defaultCooldownH: 24 },
-  { id: "imagen-4", engine: "imagen", apiId: "imagen-4.0-generate-001", free: "≈ 25 images/day", defaultCooldownH: 24 },
-  { id: "imagen-4-fast", engine: "imagen", apiId: "imagen-4.0-fast-generate-001", free: "≈ 25 images/day", defaultCooldownH: 24 },
-  { id: "gemini-flash-image", engine: "imagen", apiId: "gemini-2.5-flash-image-preview", free: "free quota", defaultCooldownH: 1 },
-  { id: "flux", engine: "pollinations", apiId: "flux", free: "free · no key", defaultCooldownH: 0 },
-  { id: "turbo", engine: "pollinations", apiId: "turbo", free: "free · fastest", defaultCooldownH: 0 },
-  { id: "dall-e-3", engine: "openai", apiId: "dall-e-3", free: "paid", defaultCooldownH: 1 },
-  { id: "gpt-image-1", engine: "openai", apiId: "gpt-image-1", free: "paid", defaultCooldownH: 1 },
-];
-
-export const findModel = (id: string): ModelDef | undefined => MODELS.find((m) => m.id === id);
 export const modelOptions = MODELS.map((m) => m.id);
 
 export const cooldownHoursFor = (modelId: string, s: ForgeSettings): number => {
@@ -153,19 +219,6 @@ export function formatCountdown(untilMs: number): string {
   return `${h}h ${m}m`;
 }
 
-export function resolveRoute(row: ManifestRow, s: ForgeSettings): { engine: ProviderId; apiModel: string; def?: ModelDef } {
-  const wanted = (row.model || "").trim();
-  if (wanted) {
-    const def = findModel(wanted);
-    if (def) return { engine: def.engine, apiModel: def.apiId, def };
-    return { engine: s.provider, apiModel: wanted };
-  }
-  if (s.provider === "imagen") return { engine: "imagen", apiModel: "imagen-4.0-generate-001", def: findModel("imagen-4") };
-  if (s.provider === "pollinations") return { engine: "pollinations", apiModel: s.pollinationsModel, def: findModel(s.pollinationsModel) };
-  if (s.provider === "openai") return { engine: "openai", apiModel: s.openaiModel || "gpt-image-1", def: findModel(s.openaiModel) };
-  return { engine: "simulated", apiModel: "forge" };
-}
-
 /* ---------------- provider meta & catalog ---------------- */
 
 export const PROVIDER_META: Record<ProviderId, { name: string; short: string; needsKey: boolean; dot: string; note: string; free: string }> = {
@@ -174,15 +227,25 @@ export const PROVIDER_META: Record<ProviderId, { name: string; short: string; ne
     note: "Offline rehearsal engine. Paints a deterministic procedural plate so you can dry-run the whole pipeline for free.",
     free: "∞ free",
   },
+  local: {
+    name: "Your own machine", short: "local", needsKey: false, dot: "#7fb069",
+    note: "A model running on your own computer — LocalAI, ComfyUI, LM Studio, an SD WebUI. Free, unlimited, private, and it works with no internet. Slower than the paid services: expect 20 seconds to a few minutes per picture depending on your graphics card.",
+    free: "free · unlimited · private",
+  },
+  cloudflare: {
+    name: "Cloudflare · FLUX", short: "cloudflare", needsKey: true, dot: "#e8a33d",
+    note: "The best genuinely free option: 10,000 credits a day, about 690 pictures, resetting at midnight UTC. No card needed. Fixed image size, so the aspect ratio is ignored.",
+    free: "free · ~690/day",
+  },
   pollinations: {
     name: "Pollinations · FLUX", short: "pollinations", needsKey: false, dot: "#f2a33c",
-    note: "Real AI images with no account and no key. Community fair-use — expect 5–40s per plate and occasional throttling.",
-    free: "free · no key",
+    note: "Free and unlimited in volume, but paced to one picture every few seconds. Anonymous use is now blocked by a bot check — get a free token at auth.pollinations.ai.",
+    free: "free · needs a token",
   },
-  imagen: {
-    name: "Google Imagen", short: "imagen", needsKey: true, dot: "#56b8a5",
-    note: "Gemini API image models. Add one or many keys — rotation on 429 is automatic. Free tiers reset daily (Pacific).",
-    free: "≈ 25/day per model per key",
+  gemini: {
+    name: "Google · Nano Banana", short: "google", needsKey: true, dot: "#56b8a5",
+    note: "Google's current image models, charged per picture. There is no free tier any more — the old Imagen free allowance ended when Google switched Imagen off on 17 August 2026. Batch jobs cost half.",
+    free: "paid · from $0.034/image",
   },
   openai: {
     name: "OpenAI-compatible", short: "openai", needsKey: true, dot: "#b18ce0",
@@ -191,33 +254,56 @@ export const PROVIDER_META: Record<ProviderId, { name: string; short: string; ne
   },
 };
 
+/**
+ * What is actually free, checked by hand on 2 September 2026.
+ * 'recurring' means the allowance comes back — daily, monthly — rather than
+ * being a one-off pot of trial credits that runs dry and never refills.
+ */
 export const FREE_OPTIONS = [
-  { name: "Pollinations (FLUX)", free: "unlimited fair-use", limit: "no key · community throttling", models: "flux, turbo", key: "none", wiring: "built-in" },
-  { name: "Google Imagen (Gemini API)", free: "≈ 25/day per model", limit: "per key · resets midnight Pacific", models: "imagen-4-ultra, imagen-4, imagen-4-fast", key: "GEMINI_API_KEY", wiring: "built-in" },
-  { name: "Hugging Face Inference", free: "free tier, rate-limited", limit: "seconds-per-request caps", models: "FLUX.1-schnell, SDXL", key: "HF token", wiring: "curl" },
-  { name: "Cloudflare Workers AI", free: "10k neurons/day", limit: "account required", models: "FLUX.1-schnell, SDXL", key: "CF token", wiring: "curl" },
-  { name: "Prodia", free: "limited free credits", limit: "slower queue on free tier", models: "SDXL, SD 1.5", key: "PRODIA_KEY", wiring: "curl" },
-  { name: "Recraft", free: "50 credits/day", limit: "design-oriented outputs", models: "recraft-v3", key: "API key", wiring: "web only" },
-  { name: "Leonardo AI", free: "150 tokens/day", limit: "token costs vary by model", models: "Phoenix, Kino", key: "API key", wiring: "curl" },
-  { name: "Stability API", free: "25 one-time credits", limit: "then paid", models: "SD3.5, SDXL", key: "STABILITY_KEY", wiring: "curl" },
-  { name: "Together AI", free: "$1 signup credit", limit: "then paid", models: "FLUX.1-schnell", key: "TOGETHER_KEY", wiring: "curl" },
-  { name: "fal.ai", free: "free credits on signup", limit: "then paid", models: "FLUX.1, AuraFlow", key: "FAL_KEY", wiring: "curl" },
-  { name: "SiliconFlow", free: "free tier quota", limit: "region-dependent", models: "FLUX.1-schnell, SD3.5", key: "API key", wiring: "curl" },
-  { name: "Segmind", free: "100 free credits", limit: "credit-based", models: "SDXL, SSD-1B", key: "SEGMIND_KEY", wiring: "curl" },
-  { name: "DeepAI", free: "limited free calls", limit: "watermarked on free tier", models: "txt2img", key: "DEEPAI_KEY", wiring: "curl" },
-  { name: "Ideogram", free: "daily free prompts", limit: "web only · no API on free", models: "Ideogram 2", key: "—", wiring: "web only" },
-  { name: "Craiyon", free: "unlimited, ad-supported", limit: "web only · lower fidelity", models: "craiyon", key: "—", wiring: "web only" },
+  { name: "Cloudflare Workers AI", free: "~690 images/day", recurring: "daily, resets 00:00 UTC", limit: "10,000 neurons/day shared with any text use", models: "FLUX.1 schnell, FLUX.2, Leonardo", key: "account id + API token", wiring: "built-in" },
+  { name: "Pollinations", free: "unlimited volume", recurring: "always", limit: "one image every 5s on the free token; anonymous use is bot-blocked", models: "flux, turbo", key: "free token from auth.pollinations.ai", wiring: "built-in" },
+  { name: "Hugging Face Inference", free: "about 25 images/month", recurring: "monthly", limit: "$0.10 of credit a month; $2 on a PRO account", models: "FLUX.1, SDXL", key: "HF token", wiring: "curl" },
+  { name: "NVIDIA NIM", free: "developer credits", recurring: "monthly-ish", limit: "free developer plan, terms change often", models: "FLUX, SDXL", key: "NVIDIA key", wiring: "curl" },
+  { name: "Google (Gemini / Nano Banana)", free: "none", recurring: "never", limit: "no free image tier since Imagen was retired on 17 Aug 2026", models: "nano-banana-2, nano-banana-2-lite", key: "GEMINI_API_KEY + billing", wiring: "built-in" },
+  { name: "fal.ai", free: "~$20 trial credit", recurring: "one-off", limit: "runs out and does not refill", models: "FLUX.1, AuraFlow", key: "FAL_KEY", wiring: "curl" },
+  { name: "Together AI", free: "$1 trial credit", recurring: "one-off", limit: "runs out and does not refill", models: "FLUX.1-schnell", key: "TOGETHER_KEY", wiring: "curl" },
+  { name: "Stability API", free: "25 trial credits", recurring: "one-off", limit: "runs out and does not refill", models: "SD3.5, SDXL", key: "STABILITY_KEY", wiring: "curl" },
+  { name: "Leonardo AI", free: "150 tokens/day", recurring: "daily", limit: "token cost varies by model", models: "Phoenix, Lucid", key: "API key", wiring: "curl" },
+  { name: "Craiyon", free: "unlimited, ad-supported", recurring: "always", limit: "web only, lower quality", models: "craiyon", key: "none", wiring: "web only" },
 ];
+
 
 export const SNIPPETS = [
   {
-    label: "Google Imagen (Gemini API)",
-    code: `curl "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=$GEMINI_API_KEY" \\
+    label: "Google · Nano Banana 2",
+    code: `curl "https://generativelanguage.googleapis.com/v1beta/interactions" \\
+  -H "x-goog-api-key: $GEMINI_API_KEY" \\
   -H 'Content-Type: application/json' \\
-  -d '{"instances":[{"prompt":"'"$PROMPT"'"}],
-       "parameters":{"sampleCount":1,"aspectRatio":"16:9"}}' \\
+  -d '{"model":"gemini-3.1-flash-image",
+       "input":[{"type":"text","text":"'"$PROMPT"'"}],
+       "response_format":{"type":"image","mime_type":"image/png",
+                          "aspect_ratio":"16:9","image_size":"1K"}}' \\
   --output response.json
-# base64 PNG lands in .predictions[0].bytesBase64Encoded`,
+# base64 PNG lands in .output_image.data
+# NOTE: the old imagen-4.0-*:predict endpoints were switched off 17 Aug 2026`,
+  },
+  {
+    label: "Cloudflare Workers AI (free)",
+    code: `curl "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/ai/run/@cf/black-forest-labs/flux-1-schnell" \\
+  -H "Authorization: Bearer $CF_API_TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{"prompt":"'"$PROMPT"'","steps":4}' \\
+  --output response.json
+# base64 image lands in .result.image
+# 10,000 neurons/day free, roughly 690 pictures, resets midnight UTC`,
+  },
+  {
+    label: "Pollinations (free, token required)",
+    code: `curl "https://image.pollinations.ai/prompt/$PROMPT?model=flux&width=1024&height=576&nologo=true" \\
+  -H "Authorization: Bearer $POLLINATIONS_TOKEN" \\
+  --output image.png
+# free token: https://auth.pollinations.ai
+# without a token you get 403 {"error":"Missing Turnstile token"}`,
   },
   {
     label: "OpenAI-compatible",
@@ -242,27 +328,18 @@ export const SNIPPETS = [
 
 /* ---------------- generation ---------------- */
 
-export class RateLimitError extends Error {
-  retryAt: number;
-  keyLabel: string;
-  constructor(message: string, retryAt: number, keyLabel: string) {
-    super(message);
-    this.name = "RateLimitError";
-    this.retryAt = retryAt;
-    this.keyLabel = keyLabel;
-  }
-}
-
+/* Plain setTimeout rather than window.setTimeout, so the text engine works
+   outside a browser too — under test, and from the MCP server. */
 function fetchWithTimeout(url: string, init: RequestInit, ms: number, outer?: AbortSignal): Promise<Response> {
   const ctrl = new AbortController();
-  const t = window.setTimeout(() => ctrl.abort(new DOMException("request timed out", "TimeoutError")), ms);
-  const onOuter = () => ctrl.abort(new DOMException("halted", "AbortError"));
+  const t = setTimeout(() => ctrl.abort(new Error("request timed out")), ms);
+  const onOuter = () => ctrl.abort(new Error("halted"));
   if (outer) {
     if (outer.aborted) onOuter();
     else outer.addEventListener("abort", onOuter);
   }
   return fetch(url, { ...init, signal: ctrl.signal }).finally(() => {
-    window.clearTimeout(t);
+    clearTimeout(t);
     outer?.removeEventListener("abort", onOuter);
   });
 }
@@ -272,139 +349,6 @@ export interface StrikeResult {
   dataUrl: string;
 }
 
-type Exhaust = (pool: "geminiKeys" | "openaiKeys", keyId: string, untilMs: number) => void;
-
-const healthyKeys = (pool: ApiKey[]) => pool.filter((k) => k.key.trim() && k.exhaustedUntil <= Date.now());
-
-async function pollinations(row: ManifestRow, apiModel: string, signal?: AbortSignal): Promise<StrikeResult> {
-  const { w, h } = ASPECTS[row.aspect_ratio];
-  const url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(row.prompt)}` +
-    `?width=${w}&height=${h}&seed=${row.seed || 1}&model=${encodeURIComponent(apiModel)}&nologo=true&safe=true` +
-    (row.negative_prompt ? `&negative=${encodeURIComponent(row.negative_prompt)}` : "");
-  const res = await fetchWithTimeout(url, { method: "GET" }, 240000, signal);
-  if (res.status === 429) throw new RateLimitError("pollinations 429 — fair-use throttle", Date.now() + 3600e3, "public");
-  if (!res.ok) throw new Error(`pollinations ${res.status} — endpoint refused the request`);
-  const blob = await res.blob();
-  if (!blob.type.startsWith("image")) throw new Error("pollinations returned a non-image payload");
-  return { blob, dataUrl: await blobToDataUrl(blob) };
-}
-
-const ASPECT_API: Record<string, string> = { "16:9": "16:9", "1:1": "1:1", "9:16": "9:16", "4:3": "4:3" };
-
-async function imagen(row: ManifestRow, apiModel: string, s: ForgeSettings, signal: AbortSignal | undefined, exhaust: Exhaust, cooldownMs: number): Promise<StrikeResult> {
-  const pool = s.geminiKeys;
-  const healthy = healthyKeys(pool);
-  if (healthy.length === 0) {
-    const withKey = pool.filter((k) => k.key.trim());
-    const earliest = withKey.length ? Math.min(...withKey.map((k) => k.exhaustedUntil || Date.now())) : 0;
-    throw new RateLimitError("every Gemini key is benched", Math.max(earliest, Date.now() + cooldownMs), "all");
-  }
-  let lastErr: unknown = null;
-  for (const k of healthy) {
-    try {
-      const res = await fetchWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:predict?key=${encodeURIComponent(k.key.trim())}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instances: [{ prompt: row.prompt }],
-            parameters: { sampleCount: 1, aspectRatio: ASPECT_API[row.aspect_ratio] ?? "1:1", seed: row.seed || undefined },
-          }),
-        },
-        180000,
-        signal
-      );
-      if (res.status === 429 || res.status === 403) {
-        exhaust("geminiKeys", k.id, Date.now() + cooldownMs);
-        lastErr = new RateLimitError(`${k.label} hit its limit (${res.status}) — rotating`, Date.now() + cooldownMs, k.label);
-        continue;
-      }
-      if (!res.ok) {
-        const text = (await res.text()).slice(0, 220);
-        throw new Error(`imagen ${res.status} — ${text || "request refused"}`);
-      }
-      const json = (await res.json()) as { predictions?: { bytesBase64Encoded?: string }[] };
-      const b64 = json.predictions?.[0]?.bytesBase64Encoded;
-      if (!b64) throw new Error("imagen returned no image bytes");
-      const blob = b64ToBlobLocal(b64, "image/png");
-      return { blob, dataUrl: await blobToDataUrl(blob) };
-    } catch (e) {
-      if (e instanceof RateLimitError) {
-        lastErr = e;
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("all Gemini keys failed");
-}
-
-async function openaiCompat(row: ManifestRow, apiModel: string, s: ForgeSettings, signal: AbortSignal | undefined, exhaust: Exhaust, cooldownMs: number): Promise<StrikeResult> {
-  const pool = s.openaiKeys;
-  const healthy = healthyKeys(pool);
-  if (healthy.length === 0) {
-    const withKey = pool.filter((k) => k.key.trim());
-    const earliest = withKey.length ? Math.min(...withKey.map((k) => k.exhaustedUntil || Date.now())) : 0;
-    throw new RateLimitError("every endpoint key is benched", Math.max(earliest, Date.now() + cooldownMs), "all");
-  }
-  const base = s.openaiBase.replace(/\/+$/, "");
-  const { w, h } = ASPECTS[row.aspect_ratio];
-  const size = w === h ? `${w}x${h}` : w > h ? "1536x1024" : "1024x1536";
-  let lastErr: unknown = null;
-  for (const k of healthy) {
-    try {
-      const res = await fetchWithTimeout(
-        `${base}/images/generations`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${k.key.trim()}` },
-          body: JSON.stringify({ model: apiModel, prompt: row.prompt, size, response_format: "b64_json" }),
-        },
-        180000,
-        signal
-      );
-      if (res.status === 429 || res.status === 401) {
-        exhaust("openaiKeys", k.id, Date.now() + cooldownMs);
-        lastErr = new RateLimitError(`${k.label} hit its limit (${res.status}) — rotating`, Date.now() + cooldownMs, k.label);
-        continue;
-      }
-      if (!res.ok) {
-        const text = (await res.text()).slice(0, 220);
-        throw new Error(`endpoint ${res.status} — ${text || "request refused"}`);
-      }
-      const json = (await res.json()) as { data?: { b64_json?: string; url?: string }[] };
-      const first = json.data?.[0];
-      if (first?.b64_json) {
-        const blob = b64ToBlobLocal(first.b64_json, "image/png");
-        return { blob, dataUrl: await blobToDataUrl(blob) };
-      }
-      if (first?.url) {
-        const img = await fetchWithTimeout(first.url, {}, 120000, signal);
-        if (!img.ok) throw new Error("image URL fetch failed");
-        const blob = await img.blob();
-        return { blob, dataUrl: await blobToDataUrl(blob) };
-      }
-      throw new Error("endpoint returned no image");
-    } catch (e) {
-      if (e instanceof RateLimitError) {
-        lastErr = e;
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("all endpoint keys failed");
-}
-
-const b64ToBlobLocal = (b64: string, mime: string): Blob => {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-};
-
 /** Real generation against the routed engine, with key rotation on rate limits. */
 export async function generateReal(
   row: ManifestRow,
@@ -413,11 +357,9 @@ export async function generateReal(
   exhaust: Exhaust,
   cooldownMs: number
 ): Promise<StrikeResult> {
-  const { engine, apiModel } = resolveRoute(row, s);
-  if (engine === "pollinations") return pollinations(row, apiModel, signal);
-  if (engine === "imagen") return imagen(row, apiModel, s, signal, exhaust, cooldownMs);
-  if (engine === "openai") return openaiCompat(row, apiModel, s, signal, exhaust, cooldownMs);
-  throw new Error("simulated engine has no network path");
+  const { bytes, mime } = await generateBytes(row, s, signal, exhaust, cooldownMs);
+  const blob = new Blob([bytes], { type: mime || "image/png" });
+  return { blob, dataUrl: await blobToDataUrl(blob) };
 }
 
 /* ---------------- the scribe & factory (OpenAI-compatible chat) ---------------- */

@@ -115,14 +115,33 @@ function ModelSelector({
 
   const options: { id: ProviderId; label: string; sub: string; ok: boolean }[] = [
     { id: "simulated", label: "Simulated Forge", sub: "offline rehearsal · free", ok: true },
-    { id: "pollinations", label: "Pollinations · FLUX", sub: "no key needed · free", ok: true },
     {
-      id: "imagen",
-      label: "Google Imagen",
+      id: "local",
+      label: "Your own machine",
+      sub: settings.localBase.trim() ? `${settings.localModel || "no model set"} · free, unlimited` : "set the address in Settings",
+      ok: Boolean(settings.localBase.trim() && settings.localModel.trim()),
+    },
+    {
+      id: "cloudflare",
+      label: "Cloudflare · FLUX",
+      sub: settings.cloudflare.accountId.trim() && settings.cloudflare.token.trim()
+        ? "free · about 690 pictures a day"
+        : "add an account id + token in Settings",
+      ok: Boolean(settings.cloudflare.accountId.trim() && settings.cloudflare.token.trim()),
+    },
+    {
+      id: "pollinations",
+      label: "Pollinations · FLUX",
+      sub: settings.pollinationsToken.trim() ? "free · one every few seconds" : "needs a free token — Settings",
+      ok: Boolean(settings.pollinationsToken.trim()),
+    },
+    {
+      id: "gemini",
+      label: "Google · Nano Banana",
       sub:
         geminiHealthy > 0
           ? `${geminiHealthy} key${geminiHealthy > 1 ? "s" : ""} healthy${benchedGemini.length ? ` · ${benchedGemini.length} resting ${formatCountdown(benchedGemini[0].exhaustedUntil)}` : ""}`
-          : "add a Gemini key in Settings",
+          : "add a Google key in Settings",
       ok: geminiHealthy > 0,
     },
     {
