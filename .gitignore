@@ -1,7 +1,12 @@
 node_modules/
 .next/
 dist/
-build/
+# build/ holds two very different things: the app icon, which is generated at
+# package time, and installer.nsh, which is source and must ship. Ignoring the
+# whole folder meant the release build got all the way to the final NSIS step
+# and then failed with 'cannot find specified resource "installer.nsh"'.
+build/*
+!build/installer.nsh
 release/
 .env
 .env.*
