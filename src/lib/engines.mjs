@@ -451,7 +451,7 @@ export function geminiRequestBody(row, apiModel, { imageSize = "1K" } = {}) {
   };
 }
 
-async function gemini(row, apiModel, s, signal, exhaust, cooldownMs) {
+async function gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages) {
   const pool = s.geminiKeys;
   const healthy = healthyKeys(pool);
   if (healthy.length === 0) {
@@ -460,7 +460,7 @@ async function gemini(row, apiModel, s, signal, exhaust, cooldownMs) {
     const earliest = Math.min(...withKey.map((k) => k.exhaustedUntil || Date.now()));
     throw new RateLimitError("Every Google key is resting.", Math.max(earliest, Date.now() + cooldownMs), "all");
   }
-  const body = geminiRequestBody(row, apiModel, { imageSize: s.geminiImageSize || "1K" });
+  const body = geminiRequestBody(row, apiModel, { imageSize: s.geminiImageSize || "1K", refImages: refImages ?? [] });
   let lastErr = null;
   for (const k of healthy) {
     try {
@@ -550,7 +550,7 @@ async function cloudflare(row, apiModel, s, signal, exhaust, cooldownMs) {
  * them wants a key, so this is the OpenAI path with the key made optional and
  * a much longer patience (a laptop GPU takes 20s–5min per picture).
  */
-async function local(row, apiModel, s, signal) {
+async function local(row, apiModel, s, signal, refImages) {
   const base = (s.localBase || "http://localhost:8080/v1").replace(/\/+$/, "");
   const { w, h } = dimsFor(row.aspect_ratio);
   const prompt = row.negative_prompt ? `${row.prompt}\n\nAvoid: ${row.negative_prompt}` : row.prompt;
@@ -564,7 +564,17 @@ async function local(row, apiModel, s, signal) {
           "Content-Type": "application/json",
           ...(s.localKey?.trim() ? { Authorization: `Bearer ${s.localKey.trim()}` } : {}),
         },
-        body: JSON.stringify({ model: apiModel, prompt, size: `${w}x${h}`, response_format: "b64_json" }),
+        body: JSON.stringify({
+          model: apiModel,
+          prompt,
+          size: `${w}x${h}`,
+          response_format: "b64_json",
+          ...(row.seed ? { seed: row.seed } : {}),
+          // Hand the model a picture to work from. Verified against LocalAI with
+          // flux.2-klein-4b: the same scene comes back with only the asked-for
+          // change, which is what makes a consistent sprite sheet possible.
+          ...(refImages?.length ? { ref_images: refImages } : {}),
+        }),
       },
       900000, // local GPUs are slow — fifteen minutes before we give up
       signal
@@ -647,14 +657,21 @@ async function openaiCompat(row, apiModel, s, signal, exhaust, cooldownMs) {
 }
 
 /** Real generation against the routed engine, with key rotation on rate limits. */
-export async function generateBytes(rawRow, s, signal, exhaust, cooldownMs) {
+export async function generateBytes(rawRow, s, signal, exhaust, cooldownMs, opts = {}) {
   const { engine, apiModel } = resolveRoute(rawRow, s);
   if (engine === "retired") throw new RetiredModelError(apiModel, RETIRED_MODELS[apiModel]);
   // Models that cannot write get told not to try.
   const row = suppressTextIfWeak(rawRow, s);
-  if (engine === "local") return local(row, apiModel, s, signal);
+  const refImages = opts.refImages ?? [];
+  if (refImages.length && !["local", "gemini"].includes(engine)) {
+    throw new Error(
+      "Working from a reference picture needs either your own machine or a Google model. " +
+        "Cloudflare and Pollinations cannot do it."
+    );
+  }
+  if (engine === "local") return local(row, apiModel, s, signal, refImages);
   if (engine === "pollinations") return pollinations(row, apiModel, s, signal);
-  if (engine === "gemini") return gemini(row, apiModel, s, signal, exhaust, cooldownMs);
+  if (engine === "gemini") return gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages);
   if (engine === "cloudflare") return cloudflare(row, apiModel, s, signal, exhaust, cooldownMs);
   if (engine === "openai") return openaiCompat(row, apiModel, s, signal, exhaust, cooldownMs);
   throw new Error("The practice forge draws its own pictures — it never goes online.");

@@ -122,10 +122,16 @@ export declare function geminiRequestBody(
   opts?: { imageSize?: string }
 ): Record<string, unknown>;
 
+export interface GenerateOptions {
+  /** base64 PNG data (no data: prefix) for the model to work from */
+  refImages?: string[];
+}
+
 export declare function generateBytes(
   row: EngineRow,
   s: EngineSettings,
   signal: AbortSignal | undefined,
   exhaust: Exhaust,
-  cooldownMs: number
+  cooldownMs: number,
+  opts?: GenerateOptions
 ): Promise<EngineBytes>;
