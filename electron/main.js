@@ -92,8 +92,9 @@ function startServer(distDir) {
       let urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
       if (urlPath === "/") urlPath = "/index.html";
       let filePath = path.normalize(path.join(distDir, urlPath));
-      // keep requests inside dist
-      if (!filePath.startsWith(distDir)) {
+      // keep requests inside dist. The separator matters: without it a
+      // request could climb out of "…/dist" and into a sibling "…/dist-evil".
+      if (filePath !== distDir && !filePath.startsWith(distDir + path.sep)) {
         res.writeHead(403);
         res.end("forbidden");
         return;

@@ -16,7 +16,7 @@ const RatioThumb = ({ row, width = 150 }: { row: ManifestRow; width?: number }) 
         <span className="font-mono text-[10px] text-dust">no plate yet</span>
       </div>
     );
-  const isSvg = row.preview.startsWith("<svg") || row.preview.startsWith("image/svg");
+  const isSvg = row.preview.trimStart().startsWith("<svg");
   return (
     <div className="thumb-zoom overflow-hidden rounded-lg border border-line" style={{ width, height: h }}>
       {isSvg ? (

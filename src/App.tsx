@@ -414,7 +414,16 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         patchRow(id, { status: "done", generated_at: new Date().toISOString(), preview: dataUrl, error: "" });
         pushLog(`✓ ${row.filename} struck · ${(blob.size / 1024).toFixed(0)} KB via ${route.engine}`, "ok");
         setSettings((prev) => ({ ...prev, usage: bumpUsage(prev.usage, modelId || s.provider) }));
-        await saveToFolder(row, blob);
+        // The picture exists and is already counted. If writing it to the
+        // folder fails — disk full, folder moved, permission withdrawn — say
+        // so and keep the row done, rather than reporting the strike itself
+        // as a failure and inviting a second paid attempt.
+        try {
+          await saveToFolder(row, blob);
+        } catch (e) {
+          const why = (e as { message?: string })?.message ?? "unknown reason";
+          pushLog(`⚠ ${row.filename} made, but not written to the folder — ${why}. Use Save all.`, "err");
+        }
         return "done";
       } catch (e) {
         if (halted() || (e as { name?: string })?.name === "AbortError") {
@@ -494,6 +503,9 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         return null;
       };
 
+      // Anything a lane throws is caught here. An escaped error would reject
+      // the Promise.all below, and setIsRunning(false) would never run: the
+      // app would sit on "forging" with only a Stop button and no way back.
       const lane = async () => {
         for (;;) {
           if (stopRef.current) return;
@@ -509,8 +521,16 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         }
       };
 
-      await Promise.all(Array.from({ length: lanes }, lane));
-      setIsRunning(false);
+      try {
+        await Promise.all(Array.from({ length: lanes }, lane));
+      } catch (e) {
+        stopRef.current = true;
+        const why = (e as { message?: string })?.message ?? "unknown reason";
+        pushLog(`✗ the run stopped unexpectedly — ${why}`, "err");
+        pushToast("err", "The run stopped unexpectedly. Nothing was lost — press Forge to carry on.");
+      } finally {
+        setIsRunning(false);
+      }
       const halted = stopRef.current;
       pushLog(`── run ${halted ? "halted" : "complete"} · ${done} struck · ${failed} failed ──`, failed > 0 ? "err" : "ok");
       const csvTargets = tauriFolderRef.current ?? null;

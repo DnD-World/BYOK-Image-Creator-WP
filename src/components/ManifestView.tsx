@@ -85,7 +85,10 @@ const Thumb = ({ row }: { row: ManifestRow }) => {
       </div>
     );
   }
-  const isSvg = row.preview.startsWith("<svg") || row.preview.startsWith("data:image/svg");
+  // Only a bare <svg …> string can be dropped into the page as markup. A
+  // data: URL is a URL: put one in innerHTML and you get an empty box, so
+  // every URL — svg or not — goes to <img> instead.
+  const isSvg = row.preview.trimStart().startsWith("<svg");
   return (
     <div className="thumb-zoom overflow-hidden rounded-lg border border-line shadow-[0_4px_14px_rgba(0,0,0,0.35)]" style={{ width: 64, height: Math.round(64 / ratio) }}>
       {isSvg ? (
@@ -437,7 +440,7 @@ function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
               </figure>
               <figure className="pop-in">
                 <div className="thumb-zoom overflow-hidden rounded-lg border border-potion/50">
-                  {compare.variant.startsWith("<svg") || compare.variant.startsWith("image/svg") ? (
+                  {compare.variant.trimStart().startsWith("<svg") ? (
                     <div className="h-full w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: compare.variant }} />
                   ) : (
                     <img src={compare.variant} alt="variant" className="h-full w-full object-cover" />
