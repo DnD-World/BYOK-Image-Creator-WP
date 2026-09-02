@@ -143,7 +143,7 @@ export function parseReply(reply: string, settings: ForgeSettings): ParsedReply 
 }
 
 /** A filename that obeys the seven rules, derived from what was asked for. */
-export function filenameFor(prompt: string, category = "item", taken: string[] = []): string {
+export function filenameFor(prompt: string, category = "image", taken: string[] = []): string {
   const stem =
     prompt
       .toLowerCase()

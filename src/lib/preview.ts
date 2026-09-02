@@ -46,7 +46,7 @@ export function renderPreview(row: ManifestRow): string {
 
   let scene = "";
 
-  if (row.category === "shop") {
+  if (row.category === "image") {
     const bw = W * 0.44, bh = H * 0.42, bx = W / 2 - bw / 2, by = H * 0.72 - bh;
     const roofH = bh * 0.34;
     scene = `
@@ -67,7 +67,7 @@ export function renderPreview(row: ManifestRow): string {
       const sx = bx + (bw / 5) * i;
       scene += `<rect x="${sx.toFixed(0)}" y="${(by + bh * 0.34).toFixed(0)}" width="${(bw / 5).toFixed(0)}" height="${(bh * 0.08).toFixed(0)}" fill="${i % 2 ? "#c9b18a" : "#a3502e"}"/>`;
     }
-  } else if (row.category === "item") {
+  } else if (row.category === "svg" || row.category === "lottie") {
     const cx = W / 2, cy = H * 0.52;
     scene = `
       <rect x="${W * 0.14}" y="${H * 0.12}" width="${W * 0.72}" height="${H * 0.76}" rx="10" fill="#e9dcc0"/>
@@ -91,7 +91,7 @@ export function renderPreview(row: ManifestRow): string {
         <path d="M${cx} ${cy - H * 0.2} L${cx + H * 0.14} ${cy + H * 0.14} L${cx} ${cy + H * 0.14} Z" fill="#74889a"/>
         <circle cx="${cx}" cy="${(cy + H * 0.02).toFixed(0)}" r="${(H * 0.05).toFixed(0)}" fill="${pal.accent}"/>`;
     }
-  } else if (row.category === "event") {
+  } else if (row.category === "gif") {
     const gy = H * 0.8;
     scene = `<rect x="0" y="${gy}" width="${W}" height="${H * 0.04}" fill="#312216"/>`;
     for (let i = 0; i < 4; i++) {

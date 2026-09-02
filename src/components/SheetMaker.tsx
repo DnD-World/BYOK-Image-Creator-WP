@@ -95,7 +95,7 @@ export default function SheetMaker({
       filename: "sheet.png",
       prompt,
       negative_prompt: def.negative,
-      category: "npc",
+      category: "sheet",
       item_id: "",
       shop_id: "",
       event_id: "",

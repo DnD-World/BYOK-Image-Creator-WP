@@ -108,8 +108,28 @@ describe("rowsToCsv → parseCsv → rowsFromCsv", () => {
   it("falls back to safe values for unknown enums", () => {
     const { headers, records } = parseCsv("id,filename,category,aspect_ratio,status\n1,x.png,dragon,3:7,exploded\n");
     const { rows } = rowsFromCsv(headers, records, new Set());
-    expect(rows[0].category).toBe("item");
+    expect(rows[0].category).toBe("image");
     expect(rows[0].aspect_ratio).toBe("16:9");
     expect(rows[0].status).toBe("pending");
+  });
+
+  it("opens a manifest written before the categories changed", () => {
+    // shop / item / event / npc came from the D&D marketplace this started as.
+    // They were all pictures, so they become "image" rather than being dropped
+    // — someone's old CSV has to still open.
+    const { headers, records } = parseCsv(
+      ["id,filename,category", "1,a.png,shop", "2,b.png,item", "3,c.png,event", "4,d.png,npc", ""].join("\n")
+    );
+    const { rows } = rowsFromCsv(headers, records, new Set());
+    expect(rows.map((r) => r.category)).toEqual(["image", "image", "image", "image"]);
+    expect(rows).toHaveLength(4);
+  });
+
+  it("keeps a category that is already one of the new ones", () => {
+    const { headers, records } = parseCsv(
+      ["id,filename,category", "1,a.png,svg", "2,b.png,gif", ""].join("\n")
+    );
+    const { rows } = rowsFromCsv(headers, records, new Set());
+    expect(rows.map((r) => r.category)).toEqual(["svg", "gif"]);
   });
 });

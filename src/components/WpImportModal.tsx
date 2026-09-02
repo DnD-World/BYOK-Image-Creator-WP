@@ -1,3 +1,4 @@
+import { SUBFOLDERS } from "../lib/output";
 import { useMemo, useState } from "react";
 import type { ManifestRow, Toast } from "../types";
 import type { ForgeSettings } from "../lib/providers";
@@ -104,7 +105,7 @@ export default function WpImportModal({
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
-            <span className="font-mono text-[11px] text-dust">{targets.length} ready to fly · {CATEGORY_FOLDER.shop}/ {CATEGORY_FOLDER.item}/ {CATEGORY_FOLDER.event}/ {CATEGORY_FOLDER.npc}/ paths kept as alt context</span>
+            <span className="font-mono text-[11px] text-dust">{targets.length} ready to fly · {SUBFOLDERS.join("/ ")}/ paths kept as alt context</span>
           </div>
         )}
 

@@ -1,13 +1,18 @@
 import JSZip from "jszip";
 import type { Category, ManifestRow } from "../types";
+import { CATEGORIES, CATEGORY_META } from "../types";
 
-export const CATEGORY_FOLDER: Record<Category, string> = {
-  shop: "shops",
-  item: "items",
-  event: "events",
-  npc: "npcs",
-};
-export const SUBFOLDERS = ["shops", "items", "events", "npcs"];
+/**
+ * Where each kind of thing lands on disk.
+ *
+ * Derived from CATEGORY_META rather than written out again, because these two
+ * lists drifting apart means files quietly saving to a folder nothing reads.
+ */
+export const CATEGORY_FOLDER = Object.fromEntries(
+  CATEGORIES.map((c) => [c, CATEGORY_META[c].folder])
+) as Record<Category, string>;
+
+export const SUBFOLDERS: string[] = CATEGORIES.map((c) => CATEGORY_META[c].folder);
 
 /* ---------------- blob helpers ---------------- */
 

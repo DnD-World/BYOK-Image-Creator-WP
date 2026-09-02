@@ -1,5 +1,5 @@
 import type { AspectKey, Category, ManifestRow, Status } from "../types";
-import { ASPECTS, ASPECT_KEYS, CATEGORIES, STATUSES } from "../types";
+import { ASPECTS, ASPECT_KEYS, CATEGORIES, STATUSES, migrateCategory } from "../types";
 
 export const FULL_COLUMNS = [
   "id",
@@ -108,7 +108,14 @@ export function parseCsv(text: string): { headers: string[]; records: string[][]
 }
 
 const normStatus = (s: string): Status => ((STATUSES as string[]).includes(s) ? (s as Status) : "pending");
-const normCategory = (s: string): Category => ((CATEGORIES as string[]).includes(s) ? (s as Category) : "item");
+/**
+ * Read a category, migrating the old ones.
+ *
+ * Manifests written before the categories became asset types hold shop, item,
+ * event and npc. Those were all pictures, so they become "image" rather than
+ * being dropped — an old CSV must still open.
+ */
+const normCategory = (s: string): Category => migrateCategory(s);
 const normAspect = (s: string): AspectKey => ((ASPECT_KEYS as string[]).includes(s) ? (s as AspectKey) : "16:9");
 
 export interface ImportResult {

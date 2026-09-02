@@ -1,5 +1,8 @@
 import type { Category, ManifestRow } from "../types";
 
+/** What the categories were called before they described the artefact. */
+const LEGACY_PREFIXES: string[] = ["shop_", "item_", "event_", "npc_"];
+
 export interface RuleCheck {
   id: string;
   label: string;
@@ -23,7 +26,19 @@ export function validateFilename(
       detail: "only a–z, 0–9, underscores and a .png extension",
     },
     { id: "underscores", label: "words joined with underscores", pass: !/--|-{2,}/.test(name) && !/__/.test(name) },
-    { id: "prefix", label: `category prefix “${category}_”`, pass: name.startsWith(category + "_") },
+    {
+      id: "prefix",
+      label: `category prefix “${category}_”`,
+      // Legacy prefixes count as valid for "image".
+      //
+      // The categories used to be shop / item / event / npc and are now asset
+      // types. Migrating a row's category is free; renaming its file is not —
+      // those PNGs already exist on disk under the old name. Rejecting them
+      // would mark every row of an existing manifest broken over a change the
+      // user never asked for. New rows get the new prefix; old ones are left
+      // alone and still pass.
+      pass: name.startsWith(category + "_") || (category === "image" && LEGACY_PREFIXES.some((lp) => name.startsWith(lp))),
+    },
     { id: "ext", label: "ends with .png", pass: /\.png$/.test(name) },
     {
       id: "unique",

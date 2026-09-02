@@ -166,10 +166,11 @@ export const IImage = (p: IconProps) => (
   </S>
 );
 export const CAT_ICON: Record<Category, (p: IconProps) => ReactNode> = {
-  shop: IImage,
-  item: IFlask,
-  event: ISparkle,
-  npc: IBook,
+  image: IImage,
+  svg: IFlask,
+  lottie: ISparkle,
+  sheet: IBook,
+  gif: IPlay,
 };
 
 /* ---------------- chips ---------------- */
@@ -181,11 +182,23 @@ export const StatusChip = ({ status, pulse }: { status: Status; pulse?: boolean 
   </span>
 );
 
-export const CatChip = ({ category }: { category: Category }) => (
-  <span className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10.5px] ${CATEGORY_META[category].chip}`}>
-    {category}
-  </span>
-);
+/**
+ * A category that is not in the table must not take the page down.
+ *
+ * It did: old rows in localStorage still held the pre-generalisation
+ * categories, CATEGORY_META[category] came back undefined, and reading .chip
+ * off it white-screened the whole app. Rows are migrated on load now, but a
+ * lookup that can crash on unexpected data is the wrong shape regardless —
+ * this is the kind of value that arrives from a CSV someone hand-edited.
+ */
+export const CatChip = ({ category }: { category: Category }) => {
+  const meta = CATEGORY_META[category] ?? CATEGORY_META.image;
+  return (
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10.5px] ${meta.chip}`}>
+      {category || "image"}
+    </span>
+  );
+};
 
 /* ---------------- button ---------------- */
 

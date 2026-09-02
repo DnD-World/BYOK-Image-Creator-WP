@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Category, LogEntry, ManifestRow, Status, Toast } from "./types";
-import { ASPECTS, STYLES, accentHex } from "./types";
+import { ASPECTS, STYLES, accentHex, migrateCategory } from "./types";
 import { APP_VERSION } from "./lib/version";
 import { checkForge, isNewerThan } from "./lib/selfCheck";
 
@@ -104,7 +104,14 @@ function loadInitial(): ManifestRow[] {
     if (raw) {
       const parsed = JSON.parse(raw) as { rows?: ManifestRow[] };
       if (Array.isArray(parsed.rows)) {
-        return parsed.rows.map((r) => (r.status === "generating" ? { ...r, status: "pending" as Status } : r)).map(withPreview);
+        return parsed.rows
+          .map((r) => (r.status === "generating" ? { ...r, status: "pending" as Status } : r))
+          // Rows saved before the categories became asset types still say
+          // shop / item / event / npc. Changing the type is a compile-time
+          // move; the data on disk does not migrate itself, and an unmigrated
+          // value used to reach CATEGORY_META and blank the whole app.
+          .map((r) => ({ ...r, category: migrateCategory(String(r.category ?? "")) }))
+          .map(withPreview);
       }
     }
   } catch {
@@ -141,6 +148,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [batchFilter, setBatchFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [catFilter, setCatFilter] = useState<Category | "all">("all");
+  const [modelFilter, setModelFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [styleLock, setStyleLockState] = useState("claymation");
@@ -586,7 +594,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       id: maxId + 1,
       filename: `item_new_${maxId + 1}.png`,
       prompt: "",
-      category: "item",
+      category: "image",
       item_id: "",
       shop_id: "",
       event_id: "",
@@ -1164,7 +1172,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         id,
         filename: filenameFor(plan.prompt, "item", taken),
         prompt: plan.prompt,
-        category: "item",
+        category: "image",
         item_id: "",
         shop_id: "",
         event_id: "",
@@ -1204,7 +1212,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         id: nextId,
         filename,
         prompt: plan.prompt,
-        category: "item",
+        category: "image",
         item_id: "",
         shop_id: "",
         event_id: "",
@@ -1356,10 +1364,11 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     return batchRows.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (catFilter !== "all" && r.category !== catFilter) return false;
+      if (modelFilter !== "all" && ((r.model || "").trim() || "(default)") !== modelFilter) return false;
       if (q && !r.filename.toLowerCase().includes(q) && !r.prompt.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [batchRows, statusFilter, catFilter, search]);
+  }, [batchRows, statusFilter, catFilter, modelFilter, search]);
 
   const drift = useMemo(() => styleDriftCount(rows, styleLock), [rows, styleLock]);
   const violations = useMemo(() => violationCount(rows), [rows]);
@@ -1556,7 +1565,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               className="btn-press hidden items-center gap-1.5 rounded-lg border border-moss/50 bg-moss/10 px-3 py-2 text-[12px] font-semibold text-moss lg:flex"
               title="Ask Google whether your half-price jobs have finished"
             >
-              Collect half-price · {settings.batchJobs.length}
+              Collect delayed · {settings.batchJobs.length}
             </button>
           )}
           {batchable > 0 && (
@@ -1566,7 +1575,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-3 py-2 text-[12px] font-semibold text-parch hover:text-cream disabled:opacity-35 xl:flex"
               title={`Send ${batchable} row${batchable > 1 ? "s" : ""} to Google as a background job at HALF PRICE. You collect them later — usually within the hour. Nothing to do with a "batch" of rows; this is only about cost.`}
             >
-              Half price · slower
+              New €/2 delayed queue
             </button>
           )}
           {/* The two live together: one makes work, the other does it. They
@@ -1574,10 +1583,10 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               which said both were ways of starting the same thing. */}
           <button
             onClick={() => nav("wizard")}
-            title="Set up a new batch of pictures — the wizard asks one easy question at a time"
+            title="Set up a new queue of pictures — the wizard asks one easy question at a time"
             className="btn-press flex items-center gap-1.5 rounded-lg border border-line2 bg-panel/70 px-3 py-2 text-[13px] text-parch hover:border-ember/50 hover:text-cream"
           >
-            <IWand size={13} /> New batch
+            <IWand size={13} /> New queue
           </button>
           <button
             onClick={() => runQueue()}
@@ -1603,6 +1612,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               catFilter={catFilter}
+              modelFilter={modelFilter}
+              setModelFilter={setModelFilter}
               setCatFilter={setCatFilter}
               styleLock={styleLock}
               isRunning={isRunning}

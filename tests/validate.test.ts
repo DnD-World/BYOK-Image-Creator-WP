@@ -57,3 +57,28 @@ describe("violationCount", () => {
     expect(violationCount(rows)).toBe(1);
   });
 });
+
+describe("the filename rules across the category change", () => {
+  it("accepts a new-style name", () => {
+    expect(validateFilename("image_bakery.png", "image", [], 1).every((r) => r.pass)).toBe(true);
+  });
+
+  it("still accepts a file named before the categories changed", () => {
+    // shop_blacksmith.png exists on disk. Migrating its category is free;
+    // renaming the actual file is not, so an old name must keep passing
+    // rather than marking a whole existing manifest broken.
+    for (const old of ["shop_blacksmith.png", "item_potion.png", "event_market.png", "npc_baker.png"]) {
+      const prefix = validateFilename(old, "image", [], 1).find((r) => r.id === "prefix");
+      expect(prefix?.pass, old).toBe(true);
+    }
+  });
+
+  it("does not let a legacy prefix stand in for the other new categories", () => {
+    // Only "image" inherits them — a vector called shop_x.png is just wrong.
+    expect(validateFilename("shop_thing.png", "svg", [], 1).find((r) => r.id === "prefix")?.pass).toBe(false);
+  });
+
+  it("still rejects a prefix that was never valid", () => {
+    expect(validateFilename("dragon_thing.png", "image", [], 1).find((r) => r.id === "prefix")?.pass).toBe(false);
+  });
+});

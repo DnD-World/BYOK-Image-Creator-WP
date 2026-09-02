@@ -45,7 +45,7 @@ function AccordionItem({
   onPatch: (p: Partial<FactoryItem>) => void;
   kindTag: string;
 }) {
-  const cat: Category = item.category ?? "item";
+  const cat: Category = item.category ?? "image";
   return (
     <div className={`overflow-hidden rounded-xl border transition-colors ${open ? "border-line2 bg-panel/70" : "border-line bg-panel/40"}`}>
       <button onClick={onToggle} className="btn-press flex w-full items-center gap-3 px-4 py-3 text-left">
@@ -634,11 +634,11 @@ export default function WizardView({
               onClick={() => {
                 const ready = items.map((i) => ({
                   ...i,
-                  filename: autoFixFilename(i.filename, i.category ?? "item"),
+                  filename: autoFixFilename(i.filename, i.category ?? "image"),
                   prompt: i.prompt + (styleDef ? `, ${styleDef.block}` : ""),
                 }));
                 const allNames = ready.map((x) => ({ id: -1, filename: x.filename }));
-                const bad = ready.filter((x) => validateFilename(x.filename, x.category ?? "item", allNames, -1).some((c) => !c.pass));
+                const bad = ready.filter((x) => validateFilename(x.filename, x.category ?? "image", allNames, -1).some((c) => !c.pass));
                 if (bad.length > 0) {
                   pushToast("err", `${bad.length} filename${bad.length > 1 ? "s" : ""} still break the rules — the forge auto-fixed them for you.`);
                 }

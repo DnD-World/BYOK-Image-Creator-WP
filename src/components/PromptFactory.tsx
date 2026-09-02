@@ -61,7 +61,7 @@ export default function PromptFactory({
         filename: `item_${kind.tag ? kind.tag + "_" : ""}new_${items.length + 1}.png`,
         prompt: "",
         negative_prompt: kind.negative,
-        category: "item",
+        category: "image",
       },
     ]);
 
@@ -81,7 +81,7 @@ export default function PromptFactory({
       };
       if (!Array.isArray(parsed.rows) || parsed.rows.length === 0) throw new Error("the model returned no rows");
       const next: FactoryItem[] = parsed.rows.map((r, i) => {
-        const cat = (CATEGORIES as string[]).includes(r.category ?? "") ? (r.category as Category) : "item";
+        const cat = (CATEGORIES as string[]).includes(r.category ?? "") ? (r.category as Category) : "image";
         const rawName = (r.filename || "").trim() || `${cat}_idea_${i + 1}.png`;
         return {
           filename: autoFixFilename(rawName, cat),
@@ -122,7 +122,7 @@ export default function PromptFactory({
       let filename = "";
       let prompt = "";
       let negative: string | undefined = kind.negative;
-      let category: Category = "item";
+      let category: Category = "image";
       if (bits.length >= 2) {
         filename = bits[0];
         prompt = bits[1];
@@ -163,14 +163,14 @@ export default function PromptFactory({
       if (!line.trim()) continue;
       if (isCsv) {
         const cells = line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-        const cat = (CATEGORIES as string[]).includes(cells[3] ?? "") ? (cells[3] as Category) : "item";
+        const cat = (CATEGORIES as string[]).includes(cells[3] ?? "") ? (cells[3] as Category) : "image";
         next.push({ filename: cells[0] || "", prompt: cells[1] || "", negative_prompt: cells[2] || kind.negative, category: cat });
       } else {
         next.push({
-          filename: autoFixFilename(`item_${kind.tag ? kind.tag + "_" : ""}imported_${next.length + 1}.png`, "item"),
+          filename: autoFixFilename(`image_${kind.tag ? kind.tag + "_" : ""}imported_${next.length + 1}.png`, "image"),
           prompt: line.trim(),
           negative_prompt: kind.negative,
-          category: "item",
+          category: "image",
         });
       }
     }
@@ -181,7 +181,7 @@ export default function PromptFactory({
   const exportCsv = () => {
     const head = "filename,prompt,negative_prompt,category";
     const q = (s: string) => (/[,"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
-    const body = items.filter((i) => i.filename && i.prompt).map((i) => [q(i.filename), q(i.prompt), q(i.negative_prompt ?? ""), i.category ?? "item"].join(","));
+    const body = items.filter((i) => i.filename && i.prompt).map((i) => [q(i.filename), q(i.prompt), q(i.negative_prompt ?? ""), i.category ?? "image"].join(","));
     downloadCsv("factory-prompts.csv", [head, ...body].join("\n"));
   };
 
@@ -338,7 +338,7 @@ export default function PromptFactory({
               </thead>
               <tbody>
                 {items.map((it, i) => {
-                  const cat: Category = it.category ?? "item";
+                  const cat: Category = it.category ?? "image";
                   return (
                     <tr key={i} className="border-b border-line/60 align-top transition-colors last:border-0 hover:bg-raise/30">
                       <td className="px-3.5 py-2.5">

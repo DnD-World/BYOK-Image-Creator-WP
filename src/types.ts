@@ -8,7 +8,24 @@ declare global {
 
 export type Status = "pending" | "generating" | "done" | "failed" | "skipped" | "imported";
 
-export type Category = "shop" | "item" | "event" | "npc";
+/**
+ * What KIND of thing a row makes — not what it depicts.
+ *
+ * These were shop / item / event / npc, which came from the D&D marketplace
+ * this was first built for and meant nothing to anyone else. They now describe
+ * the artefact, which is the thing the app actually varies: a picture, a
+ * vector, an animation, a sheet of frames.
+ *
+ * Old manifests are migrated on load — see migrateCategory below.
+ */
+export type Category = "image" | "svg" | "lottie" | "sheet" | "gif";
+
+/** shop/item/event/npc were all pictures. Anything unknown becomes one too. */
+export function migrateCategory(old: string): Category {
+  const v = (old || "").trim().toLowerCase();
+  if (CATEGORIES.includes(v as Category)) return v as Category;
+  return "image";
+}
 
 export type AspectKey = "16:9" | "1:1" | "9:16" | "4:3";
 
@@ -60,13 +77,17 @@ export const STATUS_META: Record<Status, { label: string; hex: string; chip: str
   imported: { label: "imported", hex: "#56b8a5", chip: "bg-lagoon/12 text-lagoon border-lagoon/40", dot: "bg-lagoon" },
 };
 
-export const CATEGORIES: Category[] = ["shop", "item", "event", "npc"];
+export const CATEGORIES: Category[] = ["image", "svg", "lottie", "sheet", "gif"];
 
-export const CATEGORY_META: Record<Category, { label: string; hex: string; chip: string; folder: string }> = {
-  shop: { label: "shop", hex: "#f2a33c", chip: "bg-ember/10 text-ember border-ember/35", folder: "shops" },
-  item: { label: "item", hex: "#b18ce0", chip: "bg-potion/10 text-potion border-potion/35", folder: "items" },
-  event: { label: "event", hex: "#e2593f", chip: "bg-blood/10 text-blood border-blood/35", folder: "events" },
-  npc: { label: "npc", hex: "#56b8a5", chip: "bg-lagoon/10 text-lagoon border-lagoon/35", folder: "npcs" },
+export const CATEGORY_META: Record<
+  Category,
+  { label: string; hex: string; chip: string; folder: string; hint: string }
+> = {
+  image: { label: "image", hex: "#f2a33c", chip: "bg-ember/10 text-ember border-ember/35", folder: "images", hint: "an ordinary picture" },
+  svg: { label: "svg", hex: "#b18ce0", chip: "bg-potion/10 text-potion border-potion/35", folder: "vectors", hint: "a vector, written as code" },
+  lottie: { label: "lottie", hex: "#56b8a5", chip: "bg-lagoon/10 text-lagoon border-lagoon/35", folder: "lottie", hint: "a JSON animation for the web" },
+  sheet: { label: "sheet", hex: "#8cb56f", chip: "bg-moss/10 text-moss border-moss/35", folder: "sheets", hint: "many frames of one character" },
+  gif: { label: "gif", hex: "#e2593f", chip: "bg-blood/10 text-blood border-blood/35", folder: "gifs", hint: "an animation made from a still" },
 };
 
 export const ASPECTS: Record<AspectKey, { w: number; h: number; vbW: number; vbH: number }> = {

@@ -1,5 +1,5 @@
 import type { AspectKey, Category, ManifestRow } from "../types";
-import { ASPECTS, kindById } from "../types";
+import { ASPECTS, CATEGORIES, kindById } from "../types";
 import { autoFixFilename } from "./validate";
 
 export const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -76,7 +76,27 @@ export function saveBatches(b: Batch[]): void {
 
 /* ---------------- factory → rows ---------------- */
 
-const CAT_ASPECT: Record<Category, AspectKey> = { shop: "16:9", item: "1:1", event: "16:9", npc: "4:3" };
+/**
+ * The offline idea generator's subject THEMES.
+ *
+ * These used to be the manifest categories, which conflated two unrelated
+ * ideas: what a picture depicts, and what kind of artefact a row produces. A
+ * row is now an image / svg / lottie / sheet / gif, and a storefront is a
+ * subject the generator happens to know about. Keeping them separate means
+ * adding a theme costs nothing and changes no schema.
+ */
+type Theme = "shop" | "item" | "event" | "npc";
+const THEMES: Theme[] = ["shop", "item", "event", "npc"];
+const THEME_ASPECT: Record<Theme, AspectKey> = { shop: "16:9", item: "1:1", event: "16:9", npc: "4:3" };
+
+/** A sensible default shape per kind of artefact. */
+const CAT_ASPECT: Record<Category, AspectKey> = {
+  image: "16:9",
+  svg: "1:1",
+  lottie: "1:1",
+  sheet: "1:1",
+  gif: "16:9",
+};
 
 export function factoryToRows(
   items: FactoryItem[],
@@ -87,7 +107,7 @@ export function factoryToRows(
   return items
     .filter((i) => i.filename.trim() && i.prompt.trim())
     .map((i) => {
-      const category: Category = i.category ?? "item";
+      const category: Category = i.category ?? "image";
       const aspect: AspectKey = o.aspect === "per-category" ? CAT_ASPECT[category] : o.aspect;
       return {
         id: next++,
@@ -113,7 +133,7 @@ export function factoryToRows(
    Subjects stay world-neutral; the KIND supplies the flavor, so the same idea
    works for D&D, cyberpunk, cozy… anything. */
 
-const POOLS: Record<Category, string[][]> = {
+const POOLS: Record<Theme, string[][]> = {
   shop: [
     ["forge stall", "glowing coals, hanging tools, a well-worn workbench in the window"],
     ["potion shop", "shelves of glowing flasks, crooked chimney, colored light spilling out"],
@@ -151,31 +171,37 @@ const MOOD = ["inviting and lived-in", "a little mysterious", "bustling and chee
 
 export function generateIdeas(topic: string, count: number, kindId = "none"): FactoryItem[] {
   const kind = kindById(kindId);
-  const cats: Category[] = ["shop", "item", "event", "npc"];
+
   const out: FactoryItem[] = [];
   const t = topic.trim().toLowerCase();
   for (let i = 0; i < count; i++) {
-    const cat = cats[i % cats.length];
-    const pool = POOLS[cat];
+    const theme = THEMES[i % THEMES.length];
+    const pool = POOLS[theme];
     const pick = pool[(i * 7 + t.length) % pool.length];
     const slug = pick[0].replace(/\s+/g, "_");
     const tag = kind.tag ? `${kind.tag}_` : "";
     const subject =
-      cat === "shop" ? `${pick[0]} storefront` : cat === "item" ? `${pick[0]} item icon` : cat === "event" ? `${pick[0]} street scene` : `${pick[0]} portrait`;
+      theme === "shop"
+        ? `${pick[0]} storefront`
+        : theme === "item"
+          ? `${pick[0]} item icon`
+          : theme === "event"
+            ? `${pick[0]} street scene`
+            : `${pick[0]} portrait`;
     const prompt =
       `${t ? t + ", " : ""}${subject}. ${pick[1]}, ${LIGHTING[(i * 3) % LIGHTING.length]}, ${MOOD[(i * 5) % MOOD.length]}.` +
       (kind.flavor ? ` ${kind.flavor}.` : "");
     out.push({
-      filename: `${cat}_${tag}${slug}.png`,
+      filename: `image_${tag}${slug}.png`,
       prompt,
       negative_prompt: kind.negative,
-      category: cat,
+      category: "image",
     });
   }
   return out;
 }
 
-export const ideaCategories = (): Category[] => ["shop", "item", "event", "npc"];
+export const ideaCategories = (): Category[] => [...CATEGORIES];
 export const aspectFor = (a: BatchSetup["aspect"], c: Category): AspectKey =>
   a === "per-category" ? CAT_ASPECT[c] : a;
 export const aspectDims = (a: AspectKey) => ASPECTS[a];

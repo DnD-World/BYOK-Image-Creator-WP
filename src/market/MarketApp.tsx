@@ -255,7 +255,7 @@ function StallCard({ shop, onEnter }: { shop: Shop; onEnter: () => void }) {
     <BorderGlow radius={14} glow="rgba(242,163,60,0.5)" idle="#3e2f21" innerClassName="bg-[#241b14]" className="h-full">
       <div className="flex h-full flex-col">
         <div className="scallop h-3.5" style={{ background: `repeating-linear-gradient(90deg, ${shop.stripe[0]} 0 14px, ${shop.stripe[1]} 14px 28px)` }} />
-        <Plate o={{ filename: `shop_${shop.id}.png`, category: "shop", aspect: "16:9", seed: shop.seed }} rounded={false} className="aspect-[16/9] border-b border-line" />
+        <Plate o={{ filename: `shop_${shop.id}.png`, category: "image", aspect: "16:9", seed: shop.seed }} rounded={false} className="aspect-[16/9] border-b border-line" />
         <div className="flex flex-1 flex-col p-4">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-display text-lg tracking-wide text-cream">{shop.sign}</h3>
@@ -319,7 +319,7 @@ function WareCard({ ware, discount, compact = false }: { ware: Ware; discount: n
     <BorderGlow radius={13} glow={soldOut ? "rgba(151,135,109,0.3)" : "rgba(86,184,165,0.45)"} idle="#3e2f21" innerClassName="bg-[#241b14]" className={compact ? "" : "h-full"}>
       <div className={`flex ${compact ? "items-center" : "flex-col"} gap-3.5 p-3.5`}>
         <Plate
-          o={{ filename: `item_${ware.id}.png`, category: "item", aspect: "1:1", seed: ware.seed }}
+          o={{ filename: `item_${ware.id}.png`, category: "svg", aspect: "1:1", seed: ware.seed }}
           className={`${compact ? "h-20 w-20 shrink-0" : "aspect-square w-full"} ${soldOut ? "opacity-40 grayscale" : ""}`}
         />
         <div className="min-w-0 flex-1">
@@ -358,7 +358,7 @@ function HappeningCard({ h }: { h: Happening }) {
     <BorderGlow radius={14} glow={h.live ? "rgba(226,89,63,0.5)" : "rgba(242,163,60,0.4)"} idle="#3e2f21" innerClassName="bg-[#241b14]" className="h-full">
       <div className="flex h-full flex-col">
         <div className="relative">
-          <Plate o={{ filename: `event_${h.id}.png`, category: "event", aspect: "16:9", seed: h.seed }} rounded={false} className="aspect-[16/9] border-b border-line" />
+          <Plate o={{ filename: `event_${h.id}.png`, category: "gif", aspect: "16:9", seed: h.seed }} rounded={false} className="aspect-[16/9] border-b border-line" />
           <span className={`absolute left-3 top-3 flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[9px] tracking-[0.18em] uppercase backdrop-blur ${h.live ? "border-blood/60 bg-blood/20 text-[#ffb3a3]" : "border-line2 bg-coal/80 text-parch"}`}>
             {h.live && <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-blood" />}
             {h.live ? "happening now" : h.time}
@@ -387,7 +387,7 @@ function FolkCard({ f }: { f: Folk }) {
     <BorderGlow radius={14} glow="rgba(177,140,224,0.4)" idle="#3e2f21" innerClassName="bg-[#241b14]" className="h-full">
       <div className="flex h-full flex-col p-4">
         <div className="flex gap-3.5">
-          <Plate o={{ filename: `npc_${f.id}.png`, category: "npc", aspect: "1:1", seed: f.seed }} className="h-20 w-20 shrink-0 rounded-xl" />
+          <Plate o={{ filename: `npc_${f.id}.png`, category: "sheet", aspect: "1:1", seed: f.seed }} className="h-20 w-20 shrink-0 rounded-xl" />
           <div className="min-w-0">
             <h4 className="font-display text-[16px] tracking-wide text-cream">{f.name}</h4>
             <p className="font-mono text-[10px] text-dust">{f.role}</p>
@@ -654,7 +654,7 @@ export default function MarketApp({ onOpenForge }: { onOpenForge: () => void }) 
                 <ul className="space-y-2">
                   {satchelWares.map(({ p, ware }, i) => (
                     <li key={i} className="rise-in flex items-center gap-3 rounded-xl border border-line bg-panel/50 p-2.5">
-                      <Plate o={{ filename: `item_${ware.id}.png`, category: "item", aspect: "1:1", seed: ware.seed }} className="h-12 w-12 shrink-0" />
+                      <Plate o={{ filename: `item_${ware.id}.png`, category: "svg", aspect: "1:1", seed: ware.seed }} className="h-12 w-12 shrink-0" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[12.5px] font-semibold text-cream">{ware.name}</p>
                         <p className="font-mono text-[9.5px] text-dust">{new Date(p.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · from {SHOPS.find((s) => s.id === ware.shopId)?.name ?? "the fair"}</p>
