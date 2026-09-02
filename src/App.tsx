@@ -321,7 +321,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       const halted = () => stopRef.current;
       const modelId = route.def?.id || row.model || "";
       const cdH = cooldownHoursFor(modelId || s.provider, s);
-      const exhaust = (poolName: "geminiKeys" | "openaiKeys", keyId: string, untilMs: number) =>
+      const exhaust = (poolName: "geminiKeys" | "geminiPaidKeys" | "openaiKeys", keyId: string, untilMs: number) =>
         setSettings((prev) => ({
           ...prev,
           [poolName]: prev[poolName].map((k) => (k.id === keyId ? { ...k, exhaustedUntil: untilMs } : k)),

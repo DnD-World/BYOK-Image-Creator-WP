@@ -452,10 +452,14 @@ export function geminiRequestBody(row, apiModel, { imageSize = "1K" } = {}) {
 }
 
 async function gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages) {
-  const pool = s.geminiKeys;
-  const healthy = healthyKeys(pool);
+  // Free keys first, always. A paid key is only reached once every free one is
+  // resting, so a free allowance is never left unused while money is spent.
+  const freeHealthy = healthyKeys(s.geminiKeys).map((k) => ({ ...k, pool: "geminiKeys" }));
+  const paidHealthy = healthyKeys(s.geminiPaidKeys).map((k) => ({ ...k, pool: "geminiPaidKeys" }));
+  const healthy = [...freeHealthy, ...paidHealthy];
+
   if (healthy.length === 0) {
-    const withKey = (pool || []).filter((k) => k.key.trim());
+    const withKey = [...(s.geminiKeys || []), ...(s.geminiPaidKeys || [])].filter((k) => k.key.trim());
     if (!withKey.length) throw new Error("No Google key yet — add one in Settings → Engines.");
     const earliest = Math.min(...withKey.map((k) => k.exhaustedUntil || Date.now()));
     throw new RateLimitError("Every Google key is resting.", Math.max(earliest, Date.now() + cooldownMs), "all");
@@ -475,14 +479,14 @@ async function gemini(row, apiModel, s, signal, exhaust, cooldownMs, refImages) 
         signal
       );
       if (res.status === 429) {
-        exhaust("geminiKeys", k.id, Date.now() + cooldownMs);
+        exhaust(k.pool, k.id, Date.now() + cooldownMs);
         lastErr = new RateLimitError(`${k.label} hit its limit — trying the next key.`, Date.now() + cooldownMs, k.label);
         continue;
       }
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         if (res.status === 403 || res.status === 401) {
-          exhaust("geminiKeys", k.id, Date.now() + cooldownMs);
+          exhaust(k.pool, k.id, Date.now() + cooldownMs);
           lastErr = new Error(explainFailure(res.status, text, "gemini"));
           continue;
         }

@@ -66,7 +66,10 @@ export interface ForgeSettings {
   /** free token from auth.pollinations.ai — anonymous use is bot-checked now */
   pollinationsToken: string;
   pollinationsReferrer: string;
+  /** free-tier Google keys — tried first, and expected to run out */
   geminiKeys: ApiKey[];
+  /** paid Google keys — only used once the free ones are spent */
+  geminiPaidKeys: ApiKey[];
   geminiModel: string;
   geminiImageSize: string;
   cloudflare: { accountId: string; token: string };
@@ -120,7 +123,8 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   pollinationsModel: "flux",
   pollinationsToken: "",
   pollinationsReferrer: "image-forge",
-  geminiKeys: [newKey("key-1")],
+  geminiKeys: [newKey("free-1")],
+  geminiPaidKeys: [newKey("paid-1")],
   geminiModel: "nano-banana-2",
   geminiImageSize: "1K",
   cloudflare: { accountId: "", token: "" },
@@ -189,6 +193,7 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     })(),
     customStyles: s.customStyles ?? [],
     geminiKeys: s.geminiKeys?.length ? s.geminiKeys : DEFAULT_SETTINGS.geminiKeys,
+    geminiPaidKeys: s.geminiPaidKeys?.length ? s.geminiPaidKeys : DEFAULT_SETTINGS.geminiPaidKeys,
     openaiKeys: s.openaiKeys?.length ? s.openaiKeys : DEFAULT_SETTINGS.openaiKeys,
   };
 }

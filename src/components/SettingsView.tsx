@@ -4,6 +4,7 @@ import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
+import { testConnection, type TestResult, type TestTarget } from "../lib/testConnection";
 import {
   STYLE_CATALOGUE,
   STYLE_GROUPS,
@@ -46,18 +47,61 @@ const P = ({ children, className = "" }: { children: React.ReactNode; className?
 );
 const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 
+/** One "does this work?" button, with its answer underneath. */
+function TestButton({
+  target,
+  settings,
+  label = "Test it",
+}: {
+  target: TestTarget;
+  settings: ForgeSettings;
+  label?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<TestResult | null>(null);
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Btn
+          onClick={async () => {
+            setBusy(true);
+            setRes(null);
+            setRes(await testConnection(target, settings));
+            setBusy(false);
+          }}
+          disabled={busy}
+        >
+          {busy ? "checking…" : label}
+        </Btn>
+        {res && (
+          <span className={`text-[11.5px] ${res.ok ? "text-moss" : "text-blood"}`}>
+            {res.ok ? "✓ " : "✗ "}
+            {res.message}
+          </span>
+        )}
+        {res?.ok && res.free && <span className="font-mono text-[9.5px] text-dust">cost nothing</span>}
+      </div>
+      {res?.detail && <p className="mt-1 text-[11px] leading-snug text-dust">{res.detail}</p>}
+    </div>
+  );
+}
+
 function KeyPoolEditor({
   title,
   hint,
   pool,
   onChange,
   pushToast,
+  test,
+  settings,
 }: {
   title: string;
   hint: string;
   pool: ApiKey[];
   onChange: (k: ApiKey[]) => void;
   pushToast: (kind: Toast["kind"], msg: string) => void;
+  test?: TestTarget;
+  settings?: ForgeSettings;
 }) {
   const [draft, setDraft] = useState("");
   return (
@@ -112,6 +156,7 @@ function KeyPoolEditor({
           Add key
         </Btn>
       </div>
+      {test && settings && <TestButton target={test} settings={settings} label="Check the first key" />}
       <p className="mt-2 text-[11px] text-dust">
         On a 429 the current key rests and the next one retries the same row immediately. A row parks only when every key is resting.
       </p>
@@ -326,6 +371,7 @@ export default function SettingsView({
                 </Btn>
                 {localNote && <span className="text-[11.5px] text-dust">{localNote}</span>}
               </div>
+              <TestButton target="local" settings={settings} label="Check the connection" />
               <p className="mt-2 text-[11px] text-dust">
                 Leave the key blank unless your server asks for one. Local pictures are slow — the forge waits up to
                 fifteen minutes before giving up on one. A row's own <span className="font-mono text-cream">model</span>{" "}
@@ -382,6 +428,7 @@ export default function SettingsView({
                   At 4 steps you get roughly 690 a day; at 8 steps roughly 380. Four is the model's intended setting.
                 </p>
               </div>
+              <TestButton target="cloudflare" settings={settings} label="Check the account and token" />
             </div>
 
             {/* ---- Pollinations: free, but needs a token now ---- */}
@@ -401,14 +448,26 @@ export default function SettingsView({
                   className={field}
                 />
               </div>
+              <TestButton target="pollinations" settings={settings} label="Check the token" />
             </div>
 
             <KeyPoolEditor
-              title="Google key pool (Nano Banana)"
-              hint="keys at aistudio.google.com/apikey · PAID — Google ended the free image tier when it retired Imagen on 17 Aug 2026"
+              title="Google keys — FREE accounts"
+              hint="keys at aistudio.google.com/apikey · tried first, and expected to run out. Add one per project to stretch the allowance further."
               pool={settings.geminiKeys}
               onChange={(k) => patchSettings({ geminiKeys: k })}
               pushToast={pushToast}
+              test="gemini-free"
+              settings={settings}
+            />
+            <KeyPoolEditor
+              title="Google keys — PAID accounts"
+              hint="only reached once every free key above is resting, so a free allowance is never wasted while money is spent."
+              pool={settings.geminiPaidKeys}
+              onChange={(k) => patchSettings({ geminiPaidKeys: k })}
+              pushToast={pushToast}
+              test="gemini-paid"
+              settings={settings}
             />
             <div className="rounded-xl border border-line bg-panel/50 p-4">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -449,6 +508,8 @@ export default function SettingsView({
               pool={settings.openaiKeys}
               onChange={(k) => patchSettings({ openaiKeys: k })}
               pushToast={pushToast}
+              test="openai"
+              settings={settings}
             />
             <div className="rounded-xl border border-line bg-panel/50 p-4">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -786,6 +847,59 @@ export default function SettingsView({
                 {testBusy ? "asking…" : "Test the connection"}
               </Btn>
               {testResult && <span className="font-mono text-[11.5px] text-moss">“{testResult.slice(0, 60)}”</span>}
+            </div>
+
+            {/* ---- the code engine, kept separate on purpose ---- */}
+            <div className="rounded-xl border border-line bg-panel/50 p-4">
+              <p className="font-display text-[15px] tracking-wide text-cream">
+                Code engine <span className="ml-1 font-mono text-[10px] text-dust">for SVG, icons and Lottie</span>
+              </p>
+              <p className="mt-1 text-[12px] text-dust">
+                Vectors and animated icons are <span className="text-cream">code</span>, not pictures — an image model
+                cannot make them. A model trained on code can. This is kept separate from the writer above because they
+                are different jobs, and you may well want a different model, or a different account, for each.
+              </p>
+              <p className="mt-1 text-[12px] text-dust">
+                Mistral serves both from one key: use{" "}
+                <span className="font-mono text-cream">https://api.mistral.ai/v1</span> and{" "}
+                <span className="font-mono text-cream">codestral-latest</span>.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">address</label>
+                  <input
+                    value={settings.coder.base}
+                    onChange={(e) => patchSettings({ coder: { ...settings.coder, base: e.target.value.trim() } })}
+                    placeholder="https://api.mistral.ai/v1"
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">key</label>
+                  <input
+                    type="password"
+                    value={settings.coder.key}
+                    onChange={(e) => patchSettings({ coder: { ...settings.coder, key: e.target.value.trim() } })}
+                    placeholder="paste your Mistral key"
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">model</label>
+                  <input
+                    value={settings.coder.model}
+                    onChange={(e) => patchSettings({ coder: { ...settings.coder, model: e.target.value.trim() } })}
+                    placeholder="codestral-latest"
+                    className={field}
+                  />
+                </div>
+              </div>
+              <TestButton target="coder" settings={settings} label="Test the code engine" />
+              {!settings.coder.key.trim() && (
+                <p className="mt-2 text-[11px] text-dust">
+                  Leave this empty and vectors fall back to the writer above — it works, but a code model does it better.
+                </p>
+              )}
             </div>
           </>
         )}

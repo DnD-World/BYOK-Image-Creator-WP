@@ -47,6 +47,7 @@ export interface EngineSettings {
   pollinationsToken: string;
   pollinationsReferrer: string;
   geminiKeys: ApiKey[];
+  geminiPaidKeys: ApiKey[];
   geminiModel: string;
   geminiImageSize: string;
   cloudflare: { accountId: string; token: string };
@@ -75,7 +76,7 @@ export interface EngineBytes {
   mime: string;
 }
 
-export type Exhaust = (pool: "geminiKeys" | "openaiKeys", keyId: string, untilMs: number) => void;
+export type Exhaust = (pool: "geminiKeys" | "geminiPaidKeys" | "openaiKeys", keyId: string, untilMs: number) => void;
 
 export declare const DIMS: Record<string, { w: number; h: number }>;
 export declare const MODELS: ModelDef[];

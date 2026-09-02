@@ -11,6 +11,8 @@ import {
   seedForFrame,
   sheetByKind,
   sheetFilename,
+  stripFor,
+  visemesForText,
 } from "../src/lib/sheets";
 
 const CHAR = "a stout dwarf blacksmith with a red beard";
@@ -176,5 +178,67 @@ describe("laying out the grid", () => {
   it("handles a single frame without dividing by zero", () => {
     const l = layoutFor(1, 4, 50, 50);
     expect(l).toMatchObject({ columns: 1, rows: 1, width: 50, height: 50 });
+  });
+});
+
+describe("handing frames to the animator", () => {
+  it("gives every sheet a sensible way to play back", () => {
+    for (const d of SHEET_DEFS) {
+      const s = stripFor(d);
+      expect(s.order.length, d.kind).toBe(d.frames.length);
+      expect(s.frameMs, d.kind).toBeGreaterThan(0);
+      expect(s.label.length, d.kind).toBeGreaterThan(4);
+      // every id must exist on the sheet
+      for (const id of s.order) expect(d.frames.some((f) => f.id === id), `${d.kind}/${id}`).toBe(true);
+    }
+  });
+
+  it("never plays a walk cycle backwards, which would moonwalk", () => {
+    expect(stripFor(sheetByKind("sprite-walk")!).pingPong).toBe(false);
+  });
+
+  it("turns a turnaround out and back, which reads better", () => {
+    expect(stripFor(sheetByKind("turnaround")!).pingPong).toBe(true);
+  });
+});
+
+describe("making a face say something", () => {
+  it("maps vowels to their own mouth shapes", () => {
+    expect(visemesForText("a").order).toContain("ai");
+    expect(visemesForText("e").order).toContain("e");
+    expect(visemesForText("o").order).toContain("o");
+    expect(visemesForText("u").order).toContain("u");
+  });
+
+  it("closes the lips for m, b and p", () => {
+    for (const c of ["m", "b", "p"]) expect(visemesForText(c).order).toContain("mbp");
+  });
+
+  it("treats 'th' as one shape, not two", () => {
+    const o = visemesForText("the").order;
+    expect(o).toContain("th");
+    expect(o.filter((x) => x === "th")).toHaveLength(1);
+  });
+
+  it("rests between words", () => {
+    const o = visemesForText("hi there").order;
+    expect(o.filter((x) => x === "rest").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("only ever names shapes the viseme sheet actually has", () => {
+    const ids = new Set(sheetByKind("visemes")!.frames.map((f) => f.id));
+    for (const id of visemesForText("the quick brown fox jumps over a lazy dog").order) {
+      expect(ids, id).toContain(id);
+    }
+  });
+
+  it("says something rather than nothing for empty text", () => {
+    expect(visemesForText("").order).toEqual(["rest"]);
+    expect(visemesForText("   ").order).toEqual(["rest"]);
+  });
+
+  it("ignores punctuation and digits", () => {
+    const ids = new Set(sheetByKind("visemes")!.frames.map((f) => f.id));
+    for (const id of visemesForText("hi!!! 123 ...").order) expect(ids, id).toContain(id);
   });
 });

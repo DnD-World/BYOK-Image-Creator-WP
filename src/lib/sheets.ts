@@ -257,3 +257,77 @@ export function cellPosition(i: number, layout: SheetLayout): { x: number; y: nu
     y: Math.floor(i / layout.columns) * layout.cellH,
   };
 }
+
+/* ---------------- handing frames to the animator ---------------- */
+
+/**
+ * A sheet is a pile of frames; the GIF maker plays frames in order. This is the
+ * join between them, so a finished set of mouth shapes or a walk cycle can be
+ * played back without leaving the app.
+ */
+export interface FrameStrip {
+  /** frame ids, in the order they should play */
+  order: string[];
+  /** milliseconds each frame is held */
+  frameMs: number;
+  /** should it run forwards then backwards? */
+  pingPong: boolean;
+  label: string;
+}
+
+/**
+ * Sensible playback for each kind of sheet.
+ *
+ * A walk cycle loops straight through — going backwards would moonwalk. A
+ * turnaround reads better out and back. Mouth shapes are not an animation at
+ * all on their own: they are a palette that real speech picks from, so the
+ * default here is a slow readable cycle for checking the set, not for lip-sync.
+ */
+export function stripFor(def: SheetDef): FrameStrip {
+  const ids = def.frames.map((f) => f.id);
+  switch (def.kind) {
+    case "sprite-walk":
+      return { order: ids, frameMs: 90, pingPong: false, label: "walk cycle, looping" };
+    case "turnaround":
+      return { order: ids, frameMs: 220, pingPong: true, label: "turning, out and back" };
+    case "visemes":
+      return { order: ids, frameMs: 260, pingPong: false, label: "every mouth shape in turn" };
+    case "expressions":
+      return { order: ids, frameMs: 500, pingPong: true, label: "each expression in turn" };
+    default:
+      return { order: ids, frameMs: 140, pingPong: false, label: "each frame in turn" };
+  }
+}
+
+/**
+ * Turn a line of text into the mouth shapes that would say it.
+ *
+ * Crude on purpose: it maps letters to visemes rather than doing real phonetics,
+ * which is enough to make a face look like it is talking. Anything better needs
+ * an actual phoneme aligner working from recorded audio.
+ */
+export function visemesForText(text: string, msPerShape = 90): FrameStrip {
+  const order: string[] = [];
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+
+  for (const word of words) {
+    for (let i = 0; i < word.length; i++) {
+      const c = word[i];
+      if ("aáà".includes(c) || c === "i") order.push("ai");
+      else if (c === "e") order.push("e");
+      else if (c === "o") order.push("o");
+      else if (c === "u" || c === "w" || c === "q") order.push("u");
+      else if ("mbp".includes(c)) order.push("mbp");
+      else if ("fv".includes(c)) order.push("fv");
+      else if (c === "l") order.push("l");
+      else if (c === "t" && word[i + 1] === "h") {
+        order.push("th");
+        i++;
+      } else if (/[a-z]/.test(c)) order.push("etc");
+    }
+    order.push("rest"); // a beat between words
+  }
+
+  if (!order.length) order.push("rest");
+  return { order, frameMs: msPerShape, pingPong: false, label: `saying "${text.slice(0, 40)}"` };
+}
