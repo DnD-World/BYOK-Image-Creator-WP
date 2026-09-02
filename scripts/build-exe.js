@@ -123,6 +123,14 @@ async function main() {
   const hasIcon = fs.existsSync(iconFile);
 
   const artifacts = await build({
+    // Build the files; do not upload them.
+    //
+    // electron-builder publishes to GitHub on its own the moment it sees a git
+    // tag, and then fails asking for a token it was never given. The release
+    // workflow attaches the artifacts itself, which is the part that should
+    // own publishing — so this says "never" explicitly rather than relying on
+    // a default that changes in electron-builder v27.
+    publish: "never",
     config: {
       appId: "forge.imageforge.app",
       productName: "Image Forge",
