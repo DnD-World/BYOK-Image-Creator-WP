@@ -87,7 +87,7 @@ import VectorMaker from "./components/VectorMaker";
 import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
-import { Btn, IAnvil, IFolder, IPlay, IQuill, ToastHost, IX } from "./components/ui";
+import { Btn, IAnvil, IFolder, IPlay, IQuill, IWand, ToastHost, IX } from "./components/ui";
 import type { FolderState } from "./components/SettingsDrawer";
 import MarketApp from "./market/MarketApp";
 
@@ -1437,16 +1437,6 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             />
 
         <div className="ml-auto flex items-center gap-2">
-          {onOpenMarket && (
-            <button
-              onClick={onOpenMarket}
-              title="Peek at the Emberfair marketplace demo"
-              className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
-            >
-              <span className="text-[13px] leading-none">⚜</span>
-              <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">fair</span>
-            </button>
-          )}
           <button
             onClick={() => setScribeId(selectedId ?? rows[0]?.id ?? null)}
             title="Summon the Scribe — AI prompt & filename writer"
@@ -1490,9 +1480,9 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             <button
               onClick={() => void checkBatches()}
               className="btn-press hidden items-center gap-1.5 rounded-lg border border-moss/50 bg-moss/10 px-3 py-2 text-[12px] font-semibold text-moss lg:flex"
-              title="Ask Google whether your half-price batches are finished"
+              title="Ask Google whether your half-price jobs have finished"
             >
-              Check batches · {settings.batchJobs.length}
+              Collect half-price · {settings.batchJobs.length}
             </button>
           )}
           {batchable > 0 && (
@@ -1500,11 +1490,21 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               onClick={() => void sendBatch()}
               disabled={isRunning}
               className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-3 py-2 text-[12px] font-semibold text-parch hover:text-cream disabled:opacity-35 xl:flex"
-              title="Send these to Google as one background job at half price — usually back within the hour"
+              title={`Send ${batchable} row${batchable > 1 ? "s" : ""} to Google as a background job at HALF PRICE. You collect them later — usually within the hour. Nothing to do with a "batch" of rows; this is only about cost.`}
             >
-              Batch · half price
+              Half price · slower
             </button>
           )}
+          {/* The two live together: one makes work, the other does it. They
+              used to sit at opposite ends of the bar sharing a play icon,
+              which said both were ways of starting the same thing. */}
+          <button
+            onClick={() => nav("wizard")}
+            title="Set up a new batch of pictures — the wizard asks one easy question at a time"
+            className="btn-press flex items-center gap-1.5 rounded-lg border border-line2 bg-panel/70 px-3 py-2 text-[13px] text-parch hover:border-ember/50 hover:text-cream"
+          >
+            <IWand size={13} /> New batch
+          </button>
           <button
             onClick={() => runQueue()}
             disabled={isRunning || queueLen === 0}

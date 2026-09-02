@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, PROVIDER_META, formatCountdown } from "../lib/providers";
-import { Btn, IChevron, IFlask, IFolder, IGear, IImage, IPlay, IQuill, IRetry, ISparkle, IUpload, IWand, IBook, IX } from "./ui";
+import { Btn, IDownload, IChevron, IFlask, IFolder, IGear, IImage, IPlay, IQuill, IRetry, ISparkle, IUpload, IWand, IBook, IX } from "./ui";
 import { CardPanel, PillNav, type NavCard } from "./nav";
 import type { MotionLevel } from "./motion";
 
@@ -233,7 +233,7 @@ export default function TopMenu({
   onZip: () => void;
   motion: MotionLevel;
 }) {
-  const [panel, setPanel] = useState<"wizards" | "library" | null>(null);
+  const [panel, setPanel] = useState<"wizards" | "library" | "settings" | null>(null);
 
   // Which pill is lit. Several views live under one destination.
   const activePill =
@@ -263,9 +263,21 @@ export default function TopMenu({
     { id: "lib-batches", title: "Previous batches", hint: "what you have run before", icon: <IFolder size={15} />, badge: batchCount > 0 ? String(batchCount) : undefined, onPick: () => onNav("lib-batches") },
   ];
 
+  const settingsCards: NavCard[] = [
+    { id: "engines", title: "Image engines", hint: "keys, models, cooldowns, pausing one", icon: <IImage size={15} />, onPick: () => onNav("settings", "engines") },
+    { id: "styles", title: "Image styles", hint: "the 34 looks, and your own", icon: <IFlask size={15} />, onPick: () => onNav("settings", "styles") },
+    { id: "text", title: "Text engines", hint: "the models that write, code and see", icon: <IQuill size={15} />, onPick: () => onNav("settings", "text") },
+    { id: "prompts", title: "Text prompts", hint: "tune how the AI writes for you", icon: <ISparkle size={15} />, onPick: () => onNav("settings", "prompts") },
+    { id: "filenames", title: "Filenames", hint: "the seven naming rules", icon: <IBook size={15} />, onPick: () => onNav("settings", "filenames") },
+    { id: "folders", title: "Folders", hint: "where pictures land on disk", icon: <IFolder size={15} />, onPick: () => onNav("settings", "folders") },
+    { id: "wp", title: "WP connections", hint: "the WordPress hand-off", icon: <IUpload size={15} />, onPick: () => onNav("settings", "wp") },
+    { id: "appearance", title: "Appearance", hint: "colour, background and movement", icon: <IGear size={15} />, onPick: () => onNav("settings", "appearance") },
+    { id: "advanced", title: "Advanced", hint: "check the forge, repair, backup, update", icon: <IRetry size={15} />, onPick: () => onNav("settings", "advanced") },
+  ];
+
   const pick = (id: string) => {
-    if (id === "wizards" || id === "library") {
-      setPanel((p) => (p === id ? null : (id as "wizards" | "library")));
+    if (id === "wizards" || id === "library" || id === "settings") {
+      setPanel((p) => (p === id ? null : (id as "wizards" | "library" | "settings")));
       return;
     }
     setPanel(null);
@@ -287,39 +299,33 @@ export default function TopMenu({
             { id: "wizards", label: "Wizards", badge: markedCount > 0 ? String(markedCount) : undefined },
             { id: "library", label: "Library", badge: batchCount > 0 ? String(batchCount) : undefined },
             { id: "docs", label: "Docs" },
+            { id: "settings", label: "Settings" },
           ]}
         />
         {panel === "wizards" && <CardPanel level={motion} cards={wizardCards} onClose={() => setPanel(null)} />}
         {panel === "library" && <CardPanel level={motion} cards={libraryCards} onClose={() => setPanel(null)} />}
+        {panel === "settings" && <CardPanel level={motion} cards={settingsCards} onClose={() => setPanel(null)} />}
       </div>
 
       <div className="ml-1 flex items-center gap-2 border-l border-line pl-3">
         <ModelSelector provider={provider} onProvider={onProvider} settings={settings} />
-        {/* Settings is a utility, not a destination: one icon, and its nine
-            sections live in its own sidebar where they have room to be read. */}
-        <button
-          onClick={() => onNav("settings", "engines")}
-          title="Settings"
-          aria-label="Settings"
-          className={`btn-press rounded-lg border p-2 transition ${
-            view === "settings" ? "border-ember/60 bg-ember/15 text-cream" : "border-line bg-panel/70 text-dust hover:border-line2 hover:text-cream"
-          }`}
-        >
-          <IGear size={14} />
-        </button>
+        {/* It used to be an icon and a bare number, which said neither what it
+            was nor what the number counted. */}
         <button
           onClick={onZip}
-          title="Download finished plates as ZIP"
-          className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-line2 sm:flex"
+          disabled={doneCount === 0}
+          title={
+            doneCount === 0
+              ? "Nothing finished yet to download"
+              : `Download all ${doneCount} finished picture${doneCount > 1 ? "s" : ""} as one ZIP, with the folders and the CSV inside`
+          }
+          className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-line2 disabled:opacity-35 sm:flex"
         >
-          <IImage size={13} className="text-dust" />
+          <IDownload size={13} className="text-dust" />
+          <span className="text-[12px]">Download</span>
           <span className="font-mono text-[10px] text-dust">{doneCount}</span>
         </button>
-        <span className="hidden lg:block">
-          <Btn variant="primary" onClick={() => onNav("wizard")}>
-            <IPlay size={12} /> New batch
-          </Btn>
-        </span>
+
       </div>
     </nav>
   );
