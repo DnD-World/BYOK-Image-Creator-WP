@@ -46,9 +46,49 @@ function resolveDistDir() {
   return null;
 }
 
+/**
+ * Pass a /cf-api/... request straight through to Cloudflare and pipe the answer
+ * back. Only the Authorization and Content-Type headers travel, so nothing else
+ * about the machine leaks, and only api.cloudflare.com is ever reachable.
+ */
+function proxyToCloudflare(req, res) {
+  const https = require("node:https");
+  const target = req.url.replace(/^\/cf-api/, "");
+  const upstream = https.request(
+    {
+      hostname: "api.cloudflare.com",
+      port: 443,
+      path: target,
+      method: req.method,
+      headers: {
+        ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}),
+        ...(req.headers["content-type"] ? { "content-type": req.headers["content-type"] } : {}),
+        host: "api.cloudflare.com",
+      },
+    },
+    (up) => {
+      res.writeHead(up.statusCode || 502, { "Content-Type": up.headers["content-type"] || "application/json" });
+      up.pipe(res);
+    }
+  );
+  upstream.on("error", (e) => {
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: `could not reach Cloudflare: ${e.message}` }));
+  });
+  req.pipe(upstream);
+}
+
 function startServer(distDir) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // Cloudflare's API sends no CORS headers, so the page cannot call it
+      // directly. Forward those requests from here, where that rule does not
+      // apply. Mirrors the /cf-api proxy in vite.config.js used during `npm run dev`.
+      if ((req.url || "").startsWith("/cf-api/")) {
+        proxyToCloudflare(req, res);
+        return;
+      }
+
       let urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
       if (urlPath === "/") urlPath = "/index.html";
       let filePath = path.normalize(path.join(distDir, urlPath));

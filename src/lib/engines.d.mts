@@ -115,6 +115,10 @@ export declare function textQualityFor(row: EngineRow, s: EngineSettings): TextQ
 export declare function promptStyleFor(row: EngineRow, s: EngineSettings): string | null;
 export declare function suppressTextIfWeak<T extends EngineRow>(row: T, s: EngineSettings): T;
 
+export declare function inBrowser(): boolean;
+export declare const CLOUDFLARE_BASE: string;
+export declare function cloudflareUrl(path: string): string;
+
 export declare function b64ToBytes(b64: string): Uint8Array<ArrayBuffer>;
 export declare function readGeminiImage(json: unknown): string | null;
 export declare function geminiRequestBody(

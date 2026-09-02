@@ -11,6 +11,7 @@
 
 import type { ForgeSettings } from "./providers";
 import { scribeChat } from "./providers";
+import { cloudflareUrl, inBrowser } from "./engines.mjs";
 
 export type TestTarget =
   | "local"
@@ -78,19 +79,29 @@ async function testCloudflare(s: ForgeSettings): Promise<TestResult> {
   const token = s.cloudflare.token.trim();
   if (!id || !token) return bad("Needs both the account id and the token.");
   try {
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(id)}/ai/models/search?per_page=1`,
-      { headers: { Authorization: `Bearer ${token}` }, signal: timeout(20000) }
-    );
+    const res = await fetch(cloudflareUrl(`/client/v4/accounts/${encodeURIComponent(id)}/ai/models/search?per_page=1`), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeout(20000),
+    });
     const body = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) {
       return bad("Cloudflare refused the token.", "Does it have the Workers AI permission?");
     }
-    if (res.status === 404) return bad("Cloudflare did not recognise that account id.");
+    if (res.status === 404) {
+      return bad(
+        "Cloudflare did not recognise that account id.",
+        "It is the long string of letters and numbers in the address bar after you log in — dash.cloudflare.com/THIS-PART. It is not secret."
+      );
+    }
     if (!res.ok) return bad(`Cloudflare answered ${res.status}.`, explain(res.status, body));
     return ok("Working — the account and token are both good.", "No allowance was used by this check.");
   } catch {
-    return bad("Could not reach Cloudflare.", "Check your internet connection.");
+    return bad(
+      "The request never left the app.",
+      inBrowser()
+        ? "Cloudflare does not allow browser pages to call it, so the forge routes around that. If you are seeing this, restart the app (close the black window and use the desktop shortcut) so the detour is loaded."
+        : "Check your internet connection."
+    );
   }
 }
 
@@ -163,14 +174,47 @@ async function testOpenAiLike(base: string, key: string, model: string, who: str
   }
 }
 
-/** Chat models have no free listing worth trusting, so we ask them to say one word. */
+/** Ask the provider which models this key may actually use. Best effort only. */
+async function listChatModels(engine: ForgeSettings["scribe"]): Promise<string[]> {
+  const base = engine.base.trim().replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/models`, {
+      headers: { Authorization: `Bearer ${engine.key.trim()}` },
+      signal: timeout(15000),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    return (json.data ?? []).map((d) => d.id).filter(Boolean) as string[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Chat models have no listing worth trusting on its own, so we ask them to say
+ * one word. When that fails we then ask what the key CAN use, because "this
+ * model is not available to your account" is by far the commonest cause and
+ * the provider's own error rarely says so plainly.
+ */
 async function testChat(engine: ForgeSettings["scribe"], who: string): Promise<TestResult> {
   if (!engine.key.trim()) return bad("No key yet.");
   try {
     const answer = await scribeChat(engine, "Reply with exactly: ready", "ready?");
     return ok(`Working — ${who} answered.`, `It said: "${answer.trim().slice(0, 60)}"`, false);
   } catch (e) {
-    return bad(`${who} did not answer.`, (e as { message?: string })?.message ?? "unknown");
+    const why = (e as { message?: string })?.message ?? "unknown";
+    const models = await listChatModels(engine);
+    if (models.length) {
+      const named = engine.model.trim();
+      const has = models.includes(named);
+      return bad(
+        has ? `${who} refused, though "${named}" does exist on this key.` : `Your key cannot use "${named}".`,
+        has
+          ? why
+          : `It can use: ${models.slice(0, 10).join(", ")}${models.length > 10 ? `, and ${models.length - 10} more` : ""}`
+      );
+    }
+    return bad(`${who} did not answer.`, why);
   }
 }
 

@@ -371,6 +371,21 @@ export const b64ToBytes = (b64) => {
 
 const healthyKeys = (pool) => (pool || []).filter((k) => k.key.trim() && k.exhaustedUntil <= Date.now());
 
+/** true when this code is running inside a web page rather than in Node */
+export const inBrowser = () => typeof window !== "undefined" && typeof document !== "undefined";
+
+/**
+ * Where to send Cloudflare requests.
+ *
+ * Cloudflare's API sends no CORS headers, so a browser blocks the call before
+ * it leaves the page — verified 2026-09-02, even with no auth header at all.
+ * In a page we therefore go through the app's own /cf-api proxy; in Node, where
+ * that rule does not exist, we call Cloudflare directly.
+ */
+export const CLOUDFLARE_BASE = "https://api.cloudflare.com";
+export const cloudflareUrl = (path) =>
+  inBrowser() ? `/cf-api${path}` : `${CLOUDFLARE_BASE}${path}`;
+
 const dimsFor = (aspect) => DIMS[aspect] || DIMS["1:1"];
 
 /** Turns a provider's raw complaint into something a human can act on. */
@@ -515,7 +530,7 @@ async function cloudflare(row, apiModel, s, signal, exhaust, cooldownMs) {
     throw new Error("Cloudflare needs an account id and a token — add both in Settings → Engines.");
   }
   const res = await fetchWithTimeout(
-    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/run/${apiModel}`,
+    cloudflareUrl(`/client/v4/accounts/${encodeURIComponent(account)}/ai/run/${apiModel}`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
