@@ -14,7 +14,7 @@ const SAMPLES = [
   'id,prompt\n1,"line one\nline two"\n',
   'id,prompt\n1,"he said ""hello"""\n',
   "id,filename\r\n1,a.png\r\n2,b.png\r\n",
-  "﻿ID, Negative Prompt\n1,x\n",
+  "\uFEFFID, Negative Prompt\n1,x\n",
   "id,filename\n\n1,a.png\n\n",
   "id,filename,prompt\n1,a.png,\n",
 ];

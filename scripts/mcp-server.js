@@ -166,7 +166,7 @@ const cooldownMsFor = (row) => {
  * so a file written by one side always reads back the same on the other.
  */
 function parseCsv(input) {
-  const text = String(input).replace(/^﻿/, "");
+  const text = String(input).replace(/^\uFEFF/, "");
   const rows = [];
   let row = [], cell = "", q = false;
   for (let i = 0; i < text.length; i++) {

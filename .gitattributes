@@ -1,0 +1,42 @@
+# Line endings, decided here rather than by whatever each machine happens to do.
+#
+# Without this, Git on Windows checks source out as CRLF and on Linux as LF, so
+# the bytes a build sees depend on who cloned it. That is how a release can fail
+# on a fresh Windows checkout while passing on the developer's own machine and
+# in Linux CI — which is exactly what happened when v1.0.0 was first tagged.
+#
+# Everything is normalised to LF in the repository and checked out as LF. Node,
+# every editor worth using, and Windows itself all cope with LF fine.
+
+* text=auto eol=lf
+
+# Windows-only scripts that a shell will not read: these genuinely want CRLF,
+# because cmd.exe mis-parses a .bat file with bare LF endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# NSIS installer scripts are consumed by a Windows toolchain.
+*.nsh text eol=crlf
+*.nsi text eol=crlf
+
+# Binary: never touched, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+
+# Generated: keep these out of diffs and language statistics.
+package-lock.json -diff linguist-generated
+dist/** linguist-generated
+release/** linguist-generated
