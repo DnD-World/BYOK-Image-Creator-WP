@@ -2,6 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { Category, LogEntry, ManifestRow, Status, Toast } from "./types";
 import { ASPECTS, STYLES, accentHex } from "./types";
 import { APP_VERSION } from "./lib/version";
+import { checkForge, isNewerThan } from "./lib/selfCheck";
+
+/**
+ * Where this app comes from. Used when the user has not set their own repo,
+ * so the update check works out of the box. A fork's own setting still wins.
+ */
+const HOME_REPO = { owner: "DnD-World", repo: "BYOK-Image-Creator-WP" };
+
+type UpdateReady = {
+  version: string;
+  notesUrl: string;
+  assetName: string;
+  assetUrl: string;
+  sizeNote: string;
+};
 import { SEED_ROWS } from "./lib/seed";
 import { downloadCsv, parseCsv, rowsFromCsv, rowsToCsv } from "./lib/csv";
 import { renderPreview } from "./lib/preview";
@@ -62,6 +77,7 @@ import PromptFactory from "./components/PromptFactory";
 import { BatchLibrary, ImageLibrary, StyleLibrary, TemplateLibrary } from "./components/LibraryViews";
 import WpImportModal from "./components/WpImportModal";
 import GifMaker from "./components/GifMaker";
+import UpdateReadyDialog from "./components/UpdateReadyDialog";
 import Letterer from "./components/Letterer";
 import SheetMaker from "./components/SheetMaker";
 import VectorMaker from "./components/VectorMaker";
@@ -147,6 +163,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   rowsRef.current = rows;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const [updateReady, setUpdateReady] = useState<UpdateReady | null>(null);
   const stopRef = useRef(false);
   const folderRef = useRef<FileSystemDirectoryHandle | null>(null);
   const tauriFolderRef = useRef<string | null>(null);
@@ -903,8 +920,15 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     if (stuck) fixes.push(`${stuck} stuck row${stuck > 1 ? "s" : ""} back to pending`);
     const seen = new Set<string>();
     let moved = 0;
+    let overdue = 0;
     const repaired = rowsRef.current.map((r) => {
       let out = r.status === "generating" ? { ...r, status: "pending" as Status } : r;
+      // A cooldown that has already passed should have re-queued itself. If
+      // the app was closed when it expired, the watcher never saw it.
+      if (out.retry_at && Date.parse(out.retry_at) < Date.now()) {
+        out = { ...out, retry_at: "", status: out.status === "failed" ? ("pending" as Status) : out.status };
+        overdue++;
+      }
       // Rows saved before a provider retired a model would fail forever.
       const gone = RETIRED_MODELS[(out.model || "").trim()];
       if (gone) {
@@ -922,6 +946,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       return out;
     });
     if (moved) fixes.push(`${moved} row${moved > 1 ? "s" : ""} moved off a model the provider switched off`);
+    if (overdue) fixes.push(`${overdue} expired cooldown${overdue > 1 ? "s" : ""} cleared`);
     setRows(repaired);
     let folderOk = false;
     const tRoot = tauriFolderRef.current;
@@ -1119,39 +1144,54 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   );
 
   const checkForUpdate = useCallback(async () => {
+    // The app knows where it came from. Asking the user to type the owner and
+    // repo before it would even look was a pointless gate — their setting
+    // still wins, so a fork can point this at itself.
     const g = settingsRef.current.github;
-    if (!g.owner.trim() || !g.repo.trim()) {
-      pushToast("err", "Set the repo owner and name first.");
-      return;
-    }
-    pushToast("info", `Checking GitHub for something newer than v${APP_VERSION}…`);
+    const owner = g.owner.trim() || HOME_REPO.owner;
+    const repo = g.repo.trim() || HOME_REPO.repo;
+
+    pushToast("info", `Checking for something newer than v${APP_VERSION}…`);
     try {
-      const res = await fetch(`https://api.github.com/repos/${g.owner.trim()}/${g.repo.trim()}/releases/latest`);
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`);
       if (res.status === 404) {
-        pushToast("info", "No releases published yet — tag one (git tag v1.1.0 && git push --tags) and this check will find it.");
+        pushToast("info", "No releases published yet — nothing to update to.");
+        return;
+      }
+      if (res.status === 403) {
+        pushToast("err", "GitHub is rate-limiting anonymous checks right now. Try again in a few minutes.");
         return;
       }
       if (!res.ok) throw new Error(`GitHub said ${res.status}`);
-      const rel = (await res.json()) as { tag_name: string; assets?: { name: string; browser_download_url: string }[] };
+      const rel = (await res.json()) as {
+        tag_name: string;
+        html_url?: string;
+        assets?: { name: string; browser_download_url: string; size?: number }[];
+      };
       const latest = (rel.tag_name || "").replace(/^v/, "");
-      if (!latest || latest === APP_VERSION) {
-        pushToast("ok", `You're on the newest version (v${APP_VERSION}). The forge is current.`);
+
+      // A real comparison, not string equality: running a build NEWER than the
+      // last release used to be reported as an available update.
+      if (!latest || !isNewerThan(latest, APP_VERSION)) {
+        pushToast("ok", `You are on the newest version (v${APP_VERSION}).`);
+        pushLog(`✓ update check · v${APP_VERSION} is current${latest ? ` (latest release v${latest})` : ""}`, "ok");
         return;
       }
+
       const asset = (rel.assets ?? []).find((a) => /setup.*\.exe$/i.test(a.name));
-      if (asset) {
-        pushToast("info", `v${latest} found — downloading “${asset.name}”…`);
-        const r2 = await fetch(asset.browser_download_url);
-        if (!r2.ok) throw new Error(`asset download said ${r2.status}`);
-        downloadBlob(asset.name, await r2.blob());
-        pushToast("ok", `Installer for v${latest} downloaded — run it to update. Your data is untouched.`);
-      } else {
-        pushToast("info", `v${latest} exists but has no Setup.exe asset — update with git pull + make-installer.bat instead.`);
-      }
+      const mb = asset?.size ? ` (${Math.round(asset.size / 1e6)} MB)` : "";
+      pushLog(`⬆ v${latest} is available — you are on v${APP_VERSION}`, "info");
+      setUpdateReady({
+        version: latest,
+        notesUrl: rel.html_url || `https://github.com/${owner}/${repo}/releases/latest`,
+        assetName: asset?.name ?? "",
+        assetUrl: asset?.browser_download_url ?? "",
+        sizeNote: mb,
+      });
     } catch (e) {
       pushToast("err", `Update check failed — ${(e as { message?: string })?.message ?? "network trouble"}`);
     }
-  }, [pushToast]);
+  }, [pushToast, pushLog]);
 
   /* ---------- batches, wizard, factory ---------- */
   const startBatch = useCallback(
@@ -1606,6 +1646,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               onUnlinkFolder={unlinkFolder}
               onSyncAll={syncAllToFolder}
               onGoStyles={() => nav("lib-styles")}
+              rows={rows}
               onRepair={repairForge}
               onBackup={backupAll}
               onReset={resetForge}
@@ -1644,6 +1685,25 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           onClose={() => setScribeId(null)}
           onPatch={(patch) => patchRow(scribeRow.id, patch)}
           pushToast={pushToast}
+        />
+      )}
+
+      {updateReady && (
+        <UpdateReadyDialog
+          info={updateReady}
+          current={APP_VERSION}
+          onClose={() => setUpdateReady(null)}
+          onDownload={async () => {
+            try {
+              const r = await fetch(updateReady.assetUrl);
+              if (!r.ok) throw new Error(`the download said ${r.status}`);
+              downloadBlob(updateReady.assetName, await r.blob());
+              pushToast("ok", `${updateReady.assetName} downloaded — run it to update. Your data is untouched.`);
+              setUpdateReady(null);
+            } catch (e) {
+              pushToast("err", `Download failed — ${(e as { message?: string })?.message ?? "network trouble"}`);
+            }
+          }}
         />
       )}
 

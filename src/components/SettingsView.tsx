@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Toast } from "../types";
+import type { ManifestRow, Toast } from "../types";
 import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
@@ -14,6 +14,7 @@ import {
 } from "../lib/testConnection";
 import { WHY_MANUAL_DATE, creditNoteFor } from "../lib/paidGuard";
 import { VISION_PRESETS, listChatModels } from "../lib/visionEngine";
+import { checkForge, fixableOf, summarise, type Finding } from "../lib/selfCheck";
 import {
   STYLE_CATALOGUE,
   STYLE_GROUPS,
@@ -257,6 +258,88 @@ function KeyPoolEditor({
       <p className="mt-2 text-[11px] text-dust">
         On a 429 the current key rests and the next one retries the same row immediately. A row parks only when every key is resting.
       </p>
+    </div>
+  );
+}
+
+/**
+ * "Check the forge over."
+ *
+ * Looks for the quiet problems — a key pasted twice, an engine paused and
+ * forgotten, rows aimed at a model that no longer exists — and says what each
+ * one means before offering to fix anything. Nothing is changed until you ask.
+ */
+function HealthCheck({
+  settings,
+  rows,
+  onRepair,
+}: {
+  settings: ForgeSettings;
+  rows: ManifestRow[];
+  onRepair: () => Promise<void>;
+}) {
+  const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const tone: Record<Finding["severity"], string> = {
+    broken: "border-rust/50 bg-rust/10",
+    warning: "border-ember/40 bg-ember/10",
+    note: "border-line bg-panel/60",
+  };
+  const word: Record<Finding["severity"], string> = {
+    broken: "needs fixing",
+    warning: "worth a look",
+    note: "for information",
+  };
+
+  const fixable = findings ? fixableOf(findings) : [];
+
+  return (
+    <div className="rounded-xl border border-line bg-panel/50 p-4">
+      <p className="font-display text-[15px] tracking-wide text-cream">Check the forge over</p>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-dust">
+        Looks for the things that go quietly wrong and cost you later: the same key pasted into two slots, an engine you
+        paused and forgot, rows aimed at a model the provider switched off, no free engine to fall back on. It only
+        looks — nothing changes until you say so.
+      </p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Btn variant="primary" onClick={() => setFindings(checkForge(settings, rows))}>
+          Check the forge
+        </Btn>
+        {findings && fixable.length > 0 && (
+          <Btn
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onRepair();
+                setFindings(checkForge(settings, rows));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <IRetry size={13} /> {busy ? "Fixing…" : `Fix the ${fixable.length} that can be fixed`}
+          </Btn>
+        )}
+      </div>
+
+      {findings && (
+        <div className="mt-3 space-y-2">
+          <p className="font-mono text-[11.5px] text-parch">{summarise(findings)}</p>
+          {findings.map((f) => (
+            <div key={f.id} className={`rounded-lg border p-3 ${tone[f.severity]}`}>
+              <p className="text-[13px] text-cream">
+                {f.title}
+                <span className="ml-2 font-mono text-[10px] text-dust uppercase">{word[f.severity]}</span>
+                {f.fixable && <span className="ml-2 font-mono text-[10px] text-moss">fixable</span>}
+              </p>
+              <p className="mt-1 text-[12px] leading-relaxed text-dust">{f.detail}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -556,6 +639,7 @@ export default function SettingsView({
   onSection,
   settings,
   patchSettings,
+  rows,
   folder,
   onLinkFolder,
   onUnlinkFolder,
@@ -575,12 +659,14 @@ export default function SettingsView({
   onSection: (s: SettingsSection) => void;
   settings: ForgeSettings;
   patchSettings: (p: Partial<ForgeSettings>) => void;
+  /** the manifest, so the health check can look at it */
+  rows: ManifestRow[];
   folder: FolderState;
   onLinkFolder: () => void;
   onUnlinkFolder: () => void;
   onSyncAll: () => void;
   onGoStyles: () => void;
-  onRepair: () => void;
+  onRepair: () => Promise<void>;
   onBackup: () => void;
   onReset: (c: { rows: boolean; recipes: boolean; settings: boolean; market: boolean }) => void;
   onPullManifest: (mode: "merge" | "replace") => void;
@@ -1590,6 +1676,8 @@ export default function SettingsView({
                 v{appVersion}
               </span>
             </div>
+
+            <HealthCheck settings={settings} rows={rows} onRepair={onRepair} />
 
             {/* repair */}
             <div className="rounded-xl border border-line bg-panel/50 p-4">
