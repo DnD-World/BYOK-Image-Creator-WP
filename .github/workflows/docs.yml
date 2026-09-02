@@ -1,8 +1,9 @@
 # Publishes /docs to GitHub Pages.
 #
-# Needs Pages switched on once by hand: repository Settings -> Pages ->
-# Source: "GitHub Actions". Until that is done this workflow will fail at the
-# deploy step, which is expected rather than broken.
+# `enablement: true` below switches Pages on by itself the first time this
+# runs, so nobody has to find the setting. It needs Pages to be permitted for
+# the repository at all; if an organisation policy forbids it, this step fails
+# with "Get Pages site failed" and someone with admin rights has to allow it.
 name: Documentation
 
 on:
@@ -27,6 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
