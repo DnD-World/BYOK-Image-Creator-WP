@@ -1,9 +1,15 @@
 # Publishes /docs to GitHub Pages.
 #
-# `enablement: true` below switches Pages on by itself the first time this
-# runs, so nobody has to find the setting. It needs Pages to be permitted for
-# the repository at all; if an organisation policy forbids it, this step fails
-# with "Get Pages site failed" and someone with admin rights has to allow it.
+# `enablement: true` below asks GitHub to switch Pages on by itself. Whether
+# that is allowed depends on the repository: the workflow token often cannot
+# create a Pages site, and the step then fails with
+#
+#     Create Pages site failed. Resource not accessible by integration
+#
+# which is what happens on this repository. When you see that, switch it on by
+# hand once — Settings -> Pages -> Source: "GitHub Actions" — and every run
+# after that works. The setting is left in because it costs nothing and saves
+# the manual step wherever it is permitted.
 name: Documentation
 
 on:
