@@ -279,13 +279,61 @@ export async function testConnection(target: TestTarget, s: ForgeSettings): Prom
   }
 }
 
-/** Test every key in a pool, so one bad key among five is easy to spot. */
-export async function testGeminiPool(
+/**
+ * Test every key in a pool, so one dud among ten is easy to spot.
+ *
+ * Checked one at a time rather than all at once: ten simultaneous requests from
+ * one address look like abuse, and a provider that rate-limits you mid-check
+ * reports healthy keys as broken.
+ */
+export async function testPool(
   pool: { id: string; label: string; key: string }[],
-  model: string
+  model: string,
+  kind: "gemini" | "openai" = "gemini",
+  base = "",
+  onEach?: (done: number, total: number) => void
 ): Promise<{ id: string; label: string; result: TestResult }[]> {
   const withKeys = pool.filter((k) => k.key.trim());
-  return Promise.all(
-    withKeys.map(async (k) => ({ id: k.id, label: k.label, result: await testGeminiKey(k.key, model) }))
-  );
+  const out: { id: string; label: string; result: TestResult }[] = [];
+  for (let i = 0; i < withKeys.length; i++) {
+    const k = withKeys[i];
+    const result =
+      kind === "gemini"
+        ? await testGeminiKey(k.key, model)
+        : await testOpenAiLike(base, k.key, model, "The endpoint");
+    out.push({ id: k.id, label: k.label, result });
+    onEach?.(i + 1, withKeys.length);
+  }
+  return out;
+}
+
+/** A one-line summary of a whole pool: how many work, and what is wrong with the rest. */
+export function summarisePool(results: { label: string; result: TestResult }[]): {
+  working: number;
+  total: number;
+  message: string;
+  duplicates: string[];
+} {
+  const working = results.filter((r) => r.result.ok).length;
+  const broken = results.filter((r) => !r.result.ok);
+  const reasons = [...new Set(broken.map((b) => b.result.message))];
+  const message =
+    broken.length === 0
+      ? `All ${results.length} key${results.length === 1 ? "" : "s"} work.`
+      : `${working} of ${results.length} work. ${broken.length} did not: ${reasons.join(" · ")}`;
+  return { working, total: results.length, message, duplicates: [] };
+}
+
+/** Which keys in a pool are the same key pasted twice? Returns their labels. */
+export async function findDuplicateKeys(pool: { label: string; key: string }[]): Promise<string[]> {
+  const seen = new Map<string, string[]>();
+  for (const k of pool) {
+    const v = k.key.trim();
+    if (!v) continue;
+    // fingerprint rather than compare in the open, so nothing is logged
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v));
+    const id = [...new Uint8Array(buf)].slice(0, 6).map((x) => x.toString(16)).join("");
+    seen.set(id, [...(seen.get(id) ?? []), k.label]);
+  }
+  return [...seen.values()].filter((labels) => labels.length > 1).map((labels) => labels.join(" and "));
 }

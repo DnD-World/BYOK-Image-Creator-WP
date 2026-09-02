@@ -4,7 +4,14 @@ import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
-import { testConnection, type TestResult, type TestTarget } from "../lib/testConnection";
+import {
+  findDuplicateKeys,
+  summarisePool,
+  testConnection,
+  testPool,
+  type TestResult,
+  type TestTarget,
+} from "../lib/testConnection";
 import { WHY_MANUAL_DATE, creditNoteFor } from "../lib/paidGuard";
 import {
   STYLE_CATALOGUE,
@@ -108,6 +115,9 @@ function KeyPoolEditor({
   credits?: boolean;
 }) {
   const [draft, setDraft] = useState("");
+  const [poolBusy, setPoolBusy] = useState("");
+  const [poolNote, setPoolNote] = useState("");
+  const [poolResults, setPoolResults] = useState<{ id: string; label: string; result: TestResult }[]>([]);
   return (
     <div className="rounded-xl border border-line bg-panel/50 p-4">
       <p className="font-display text-[15px] tracking-wide text-cream">{title}</p>
@@ -197,7 +207,52 @@ function KeyPoolEditor({
           <p className="text-[11px] leading-snug text-dust">{WHY_MANUAL_DATE}</p>
         </div>
       )}
-      {test && settings && <TestButton target={test} settings={settings} label="Check the first key" />}
+      {test && settings && (
+        <div className="mt-2 flex flex-wrap items-start gap-2">
+          <TestButton target={test} settings={settings} label="Check the first key" />
+          {(test === "gemini-free" || test === "gemini-paid" || test === "openai") && pool.filter((k) => k.key.trim()).length > 1 && (
+            <Btn
+              onClick={async () => {
+                setPoolBusy("checking…");
+                setPoolResults([]);
+                const dupes = await findDuplicateKeys(pool);
+                const results = await testPool(
+                  pool,
+                  test === "openai" ? settings.openaiModel : settings.geminiModel,
+                  test === "openai" ? "openai" : "gemini",
+                  settings.openaiBase,
+                  (done, total) => setPoolBusy(`checking ${done} of ${total}…`)
+                );
+                setPoolResults(results);
+                setPoolNote(
+                  summarisePool(results).message +
+                    (dupes.length ? ` · the same key appears twice: ${dupes.join("; ")}` : "")
+                );
+                setPoolBusy("");
+              }}
+              disabled={Boolean(poolBusy)}
+            >
+              {poolBusy || `Check all ${pool.filter((k) => k.key.trim()).length} keys`}
+            </Btn>
+          )}
+        </div>
+      )}
+
+      {poolNote && (
+        <p className="mt-2 rounded-lg border border-line bg-[#191310] px-3 py-2 text-[11.5px] text-parch">{poolNote}</p>
+      )}
+      {poolResults.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {poolResults.map((r, i) => (
+            <div key={r.id} className="flex items-start gap-2 text-[11.5px]">
+              <span className="w-10 shrink-0 font-mono text-[10px] text-dust">#{i + 1}</span>
+              <span className={r.result.ok ? "text-moss" : "text-blood"}>
+                {r.result.ok ? "✓" : "✗"} {r.result.message}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <p className="mt-2 text-[11px] text-dust">
         On a 429 the current key rests and the next one retries the same row immediately. A row parks only when every key is resting.
       </p>
