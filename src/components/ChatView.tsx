@@ -16,8 +16,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ForgeSettings } from "../lib/providers";
 import { scribeChat } from "../lib/providers";
 import { CHAT_SYSTEM } from "../lib/appFacts";
-import { listChatModels } from "../lib/visionEngine";
-import { manifestDigest, modelListForPrompt, parseReply, styleListForPrompt, type ChatPlan, type EditPreview, type RowEdit } from "../lib/chatPlan";
+import { listChatModels, probeChatModels } from "../lib/visionEngine";
+import { manifestDigest, modelListForPrompt, parseReply, styleListForPrompt, usableModels, type ChatPlan, type EditPreview, type RowEdit } from "../lib/chatPlan";
 import { styleById } from "../lib/styleCatalogue";
 import { MODELS } from "../lib/engines.mjs";
 import type { ManifestRow, Toast } from "../types";
@@ -34,6 +34,36 @@ import {
 
 import type { StoredTurn as Turn } from "../lib/chatStore";
 
+/**
+ * The kinds of thing worth asking for, shown rather than hidden in a menu.
+ *
+ * Written as the request a person would actually type, so pressing one both
+ * starts the job AND teaches what this box accepts. Nothing is sent until
+ * Send is pressed, so the wording stays yours to change.
+ */
+const STARTERS: { label: string; seed: string; hint: string }[] = [
+  {
+    label: "A picture",
+    seed: "I want one picture: ",
+    hint: "One picture, start to finish — it helps you choose a look and an engine",
+  },
+  {
+    label: "A whole set",
+    seed: "I want a set of pictures, all matching: ",
+    hint: "Many pictures at once, written into the manifest for you to check before running",
+  },
+  {
+    label: "Something animated",
+    seed: "I want something animated: ",
+    hint: "A character that moves or talks, an animated icon, or a GIF from a picture",
+  },
+  {
+    label: "Fix what I have",
+    seed: "Look at my manifest and ",
+    hint: "Rewrite prompts, fix filenames, change styles on rows you already have",
+  },
+];
+
 const OPENERS = [
   "a cosy village bakery at dawn",
   "a rain-slick neon noodle stall",
@@ -49,6 +79,8 @@ export default function ChatView({
   onAddRows,
   onEditRows,
   onOpenSettings,
+  seed,
+  onSeedUsed,
   pushToast,
 }: {
   settings: ForgeSettings;
@@ -61,6 +93,9 @@ export default function ChatView({
   /** applies changes to rows that already exist; returns how many changed */
   onEditRows: (edits: RowEdit[]) => Promise<number>;
   onOpenSettings: () => void;
+  /** a request handed in from elsewhere, e.g. "improve row 4" */
+  seed?: string;
+  onSeedUsed?: () => void;
   pushToast: (kind: Toast["kind"], msg: string) => void;
 }) {
   const [chats, setChats] = useState<Conversation[]>(() => loadChats());
@@ -73,6 +108,9 @@ export default function ChatView({
   // "" means let the chat choose. Anything else overrides it, for when you
   // already know which engine you want and would rather not argue about it.
   const [imageModel, setImageModel] = useState("");
+  /** Models confirmed to answer, once you ask. null = not checked yet. */
+  const [working, setWorking] = useState<string[] | null>(null);
+  const [probing, setProbing] = useState<{ done: number; total: number } | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   /**
@@ -136,6 +174,18 @@ export default function ChatView({
   }, []);
 
   useEffect(resize, [draft, resize]);
+
+  // Something elsewhere in the app asked the chat to look at a row. Start a
+  // fresh conversation with the request written out, but do not send it — the
+  // wording is still theirs to change.
+  useEffect(() => {
+    if (!seed) return;
+    writingTo.current = null;
+    setActiveId(null);
+    setDraft(seed);
+    onSeedUsed?.();
+    setTimeout(() => taRef.current?.focus(), 0);
+  }, [seed, onSeedUsed]);
 
   /** Update the open conversation, creating one on the first thing said. */
   const writeTurns = useCallback(
@@ -241,6 +291,36 @@ ${manifestDigest(rows)}`,
     [onForge, pushToast, writeTurns]
   );
 
+  /** Start a new conversation, optionally with the request already begun. */
+  const startFresh = useCallback((seed: string) => {
+    writingTo.current = null;
+    setActiveId(null);
+    setDraft(seed);
+    // Put the cursor where they will carry on typing.
+    setTimeout(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 0);
+  }, []);
+
+  const checkModels = useCallback(async () => {
+    const list = modelChoices.length > 0 ? modelChoices : [settings.scribe.model].filter(Boolean);
+    setProbing({ done: 0, total: list.length });
+    const results = await probeChatModels(settings.scribe, list, (done, total) => setProbing({ done, total }));
+    const ok = results.filter((r) => r.ok).map((r) => r.model);
+    setWorking(ok);
+    setProbing(null);
+    if (ok.length > 0 && !ok.includes(chatModel)) setChatModel(ok[0]);
+    pushToast(
+      ok.length > 0 ? "ok" : "err",
+      ok.length > 0
+        ? `${ok.length} of ${list.length} models answered. The list now shows only those.`
+        : "None of them answered. Check the key in Settings → Text engines."
+    );
+  }, [modelChoices, settings.scribe, chatModel, pushToast]);
+
   const applyEdits = useCallback(
     async (edits: RowEdit[], turnIndex: number) => {
       setForging(true);
@@ -302,17 +382,33 @@ ${manifestDigest(rows)}`,
       {/* The list on the left, in the shape everyone already knows. */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-coal/50 md:flex">
         <div className="border-b border-line p-3">
+          {/*
+            One big button and four small ones, rather than a menu.
+            A dropdown hides its own contents until you know to look, and the
+            whole point of these is to show someone who has just arrived what
+            this thing can be asked for. Each one starts a chat and puts the
+            request in the box; it is not sent until you press Send, so you can
+            still change it.
+          */}
           <Btn
             variant="primary"
             className="w-full justify-center"
-            onClick={() => {
-              writingTo.current = null;
-              setActiveId(null);
-              setDraft("");
-            }}
+            onClick={() => startFresh("")}
           >
             <ISparkle size={12} /> New chat
           </Btn>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {STARTERS.map((st) => (
+              <button
+                key={st.label}
+                onClick={() => startFresh(st.seed)}
+                title={st.hint}
+                className="rounded-lg border border-line bg-panel/50 px-2 py-1.5 text-left text-[11.5px] leading-tight text-parch transition hover:border-ember/50 hover:text-cream"
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
           <div className="mt-2 flex gap-1">
             {(["date", "model"] as const).map((g) => (
               <button
@@ -482,7 +578,7 @@ ${manifestDigest(rows)}`,
             title="Which text model answers. Switching starts the next chat on it."
             className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel/60 px-2 py-1.5 font-mono text-[11px] text-parch"
           >
-            {(modelChoices.length > 0 ? modelChoices : [settings.scribe.model].filter(Boolean)).map((m) => (
+            {(working ?? (modelChoices.length > 0 ? modelChoices : [settings.scribe.model].filter(Boolean))).map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
@@ -498,13 +594,26 @@ ${manifestDigest(rows)}`,
             title="Which engine paints the picture. Leave on “chat decides” and it will pick one that suits the style, preferring free."
             className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel/60 px-2 py-1.5 font-mono text-[11px] text-parch"
           >
-            <option value="">chat decides the engine</option>
-            {MODELS.map((m) => (
+            <option value="">Auto image engine</option>
+            {usableModels(settings).map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label} {m.priceUsd ? `· $${m.priceUsd.toFixed(3)}` : "· free"}
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => void checkModels()}
+            disabled={!!probing}
+            title={
+              working
+                ? `Showing the ${working.length} models that answered. Press again to re-check.`
+                : "Say hi to every model on this endpoint and keep only the ones that answer. An endpoint lists what it SERVES, not what your key may use."
+            }
+            className="shrink-0 rounded-lg border border-line bg-panel/60 px-2 py-1.5 font-mono text-[10px] text-dust transition hover:text-cream disabled:opacity-50"
+          >
+            {probing ? `${probing.done}/${probing.total}` : working ? `${working.length} work` : "check"}
+          </button>
           <Btn variant="primary" disabled={busy || !draft.trim()}>
             <ISparkle size={13} /> Send
           </Btn>

@@ -215,3 +215,51 @@ export function jsonFromReply(reply: string): unknown {
   if (start === -1 || end === -1 || end < start) throw new Error("no JSON object in the reply");
   return JSON.parse(candidate.slice(start, end + 1));
 }
+
+/**
+ * Say "hi" to a list of models and report which actually answer.
+ *
+ * An endpoint's model list is what it SERVES, not what your key may use. Some
+ * entries need a tier you do not have, some are retired but still listed, and
+ * some are not chat models at all. The only way to know is to ask.
+ *
+ * Deliberately a button, never automatic. This is one real request per model,
+ * and a list of fifty would mean fifty requests every time the chat opened.
+ * They run one at a time for the same reason key checks do: fifty at once from
+ * one address looks like abuse and gets you rate-limited into false failures.
+ */
+export async function probeChatModels(
+  engine: VisionEngine,
+  models: string[],
+  onProgress?: (done: number, total: number, model: string, ok: boolean) => void,
+  signal?: AbortSignal
+): Promise<{ model: string; ok: boolean; why?: string }[]> {
+  const base = trimBase(engine.base);
+  const out: { model: string; ok: boolean; why?: string }[] = [];
+
+  for (let i = 0; i < models.length; i++) {
+    if (signal?.aborted) break;
+    const model = models[i];
+    let ok = false;
+    let why: string | undefined;
+    try {
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(engine.key.trim() ? { Authorization: `Bearer ${engine.key.trim()}` } : {}),
+        },
+        // As small as a real request can be: one token in, one token out.
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "hi" }], max_tokens: 1 }),
+        signal,
+      });
+      if (res.ok) ok = true;
+      else why = explainVisionFailure(res.status, await res.text().catch(() => ""));
+    } catch (e) {
+      why = (e as { message?: string })?.message ?? "could not reach it";
+    }
+    out.push({ model, ok, why });
+    onProgress?.(i + 1, models.length, model, ok);
+  }
+  return out;
+}

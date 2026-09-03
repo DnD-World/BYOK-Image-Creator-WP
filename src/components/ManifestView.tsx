@@ -468,8 +468,8 @@ function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
           <Btn className="justify-center" disabled={!row.preview} onClick={() => downloadRow(row.id)}>
             <IDownload size={13} /> Save PNG
           </Btn>
-          <Btn className="justify-center" onClick={() => openScribe(row.id)}>
-            <IQuill size={13} /> Scribe
+          <Btn className="justify-center" onClick={() => openScribe(row.id)} title="Open the chat with this row, to rewrite its prompt, rename it or change its look">
+            <IQuill size={13} /> Ask the chat
           </Btn>
           <Btn className="justify-center" onClick={() => duplicateRow(row.id)}>
             <IPlus size={13} /> Duplicate

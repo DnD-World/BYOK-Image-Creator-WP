@@ -298,3 +298,25 @@ export function parseEdits(
   }
   return { edits, previews };
 }
+
+/**
+ * The image engines this person can actually use right now.
+ *
+ * Offering Cloudflare to someone who never entered a token is offering a
+ * failure. The check is per engine, using the same credentials the router
+ * uses, so the list cannot claim something the forge would then refuse.
+ */
+export function usableModels(settings: ForgeSettings): typeof MODELS {
+  const has = {
+    local: Boolean(settings.localBase?.trim()),
+    cloudflare: Boolean(settings.cloudflare?.accountId?.trim() && settings.cloudflare?.token?.trim()),
+    pollinations: Boolean(settings.pollinationsToken?.trim()),
+    gemini:
+      (settings.geminiKeys ?? []).some((k) => k.key.trim()) ||
+      (settings.geminiPaidKeys ?? []).some((k) => k.key.trim()),
+    openai: (settings.openaiKeys ?? []).some((k) => k.key.trim()),
+  } as Record<string, boolean>;
+
+  const paused = new Set(settings.pausedEngines ?? []);
+  return MODELS.filter((m) => has[m.engine] === true && !paused.has(m.engine));
+}

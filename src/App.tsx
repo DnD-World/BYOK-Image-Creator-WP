@@ -86,7 +86,6 @@ import { CountUp, type MotionLevel } from "./components/motion";
 import Letterer from "./components/Letterer";
 import SheetMaker from "./components/SheetMaker";
 import VectorMaker from "./components/VectorMaker";
-import ScribeDrawer from "./components/ScribeDrawer";
 import TopMenu, { type View } from "./components/TopMenu";
 import { CursorFX, DotField, EmberField, StarField } from "./components/effects";
 import { Btn, IAnvil, IFolder, IPlay, IQuill, IWand, ToastHost, IX } from "./components/ui";
@@ -158,7 +157,15 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [settings, setSettings] = useState<ForgeSettings>(loadSettings);
-  const [scribeId, setScribeId] = useState<number | null>(null);
+  /**
+   * A request handed to the chat from somewhere else in the app.
+   *
+   * This replaces the Scribe drawer. The drawer did one row at a time behind a
+   * button labelled with a word — "scribe" — that said nothing about what it
+   * did. The chat does the same job, plus whole lists, and can be asked in
+   * plain words.
+   */
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
   const [folder, setFolder] = useState<FolderState>({ linked: false, name: "", pendingName: null, error: "" });
   const [batches, setBatches] = useState<Batch[]>(loadBatches);
   const [setups, setSetups] = useState<SavedSetup[]>(loadSetups);
@@ -1414,7 +1421,6 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   const markedCount = rows.filter((r) => r.status === "failed" || ((r.note ?? "").trim() !== "" && (r.status === "done" || r.status === "imported"))).length;
   const coolingCount = rows.filter((r) => r.retry_at && Date.parse(r.retry_at) > Date.now()).length;
 
-  const scribeRow = scribeId !== null ? (rows.find((r) => r.id === scribeId) ?? null) : null;
   const activeBatch = batchFilter ? batches.find((b) => b.id === batchFilter) : null;
   const styleBlock = STYLES.find((s) => s.id === styleLock)?.block ?? settings.customStyles.find((s) => s.id === styleLock)?.block ?? "";
   const accent = accentHex(settings.ambient.accent);
@@ -1519,14 +1525,6 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             />
 
         <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => setScribeId(selectedId ?? rows[0]?.id ?? null)}
-            title="Summon the Scribe — AI prompt & filename writer"
-            className="btn-press flex items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-potion/50 hover:text-potion"
-          >
-            <IQuill size={14} />
-            <span className="hidden font-mono text-[10px] tracking-wide uppercase lg:inline">scribe</span>
-          </button>
           {/* Everything that moves, behind one door. Sheets, vectors, Lottie
               and GIFs were four separate ideas in the UI and one idea to a
               person: making something animate.
@@ -1677,7 +1675,11 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
                 setCatFilter={setCatFilter}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
-                openScribe={setScribeId}
+                openScribe={(id) => {
+                  const r = rowsRef.current.find((x) => x.id === id);
+                  setChatSeed(`Look at row #${id} (${r?.filename ?? ""}) and `);
+                  nav("chat");
+                }}
                 startWizard={() => nav("wizard")}
                 addRow={addRow}
                 updateRow={patchRow}
@@ -1839,6 +1841,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               onForge={forgeFromChat}
               onAddRows={addRowsFromChat}
               onEditRows={editRowsFromChat}
+              seed={chatSeed ?? undefined}
+              onSeedUsed={() => setChatSeed(null)}
               onOpenSettings={() => nav("settings", "text")}
               pushToast={pushToast}
             />
@@ -1861,36 +1865,6 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           </main>
         )}
       </div>
-
-      {scribeRow && (
-        <ScribeDrawer
-          row={scribeRow}
-          settings={settings}
-          styleLock={styleLock}
-          onClose={() => setScribeId(null)}
-          onPatch={(patch) => patchRow(scribeRow.id, patch)}
-          pushToast={pushToast}
-        />
-      )}
-
-      {updateReady && (
-        <UpdateReadyDialog
-          info={updateReady}
-          current={APP_VERSION}
-          onClose={() => setUpdateReady(null)}
-          onDownload={async () => {
-            try {
-              const r = await fetch(updateReady.assetUrl);
-              if (!r.ok) throw new Error(`the download said ${r.status}`);
-              downloadBlob(updateReady.assetName, await r.blob());
-              pushToast("ok", `${updateReady.assetName} downloaded — run it to update. Your data is untouched.`);
-              setUpdateReady(null);
-            } catch (e) {
-              pushToast("err", `Download failed — ${(e as { message?: string })?.message ?? "network trouble"}`);
-            }
-          }}
-        />
-      )}
 
       {gifFor && (
         <GifMaker
