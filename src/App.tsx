@@ -3,6 +3,7 @@ import type { Category, LogEntry, ManifestRow, Status, Toast } from "./types";
 import { ASPECTS, STYLES, accentHex, migrateCategory } from "./types";
 import { APP_VERSION } from "./lib/version";
 import { checkForge, isNewerThan } from "./lib/selfCheck";
+import { surfacesFor } from "./lib/theme";
 
 /**
  * Where this app comes from. Used when the user has not set their own repo,
@@ -1441,6 +1442,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
         {
           "--color-ember": accent,
           "--accent": accent,
+          // The room takes the accent's hue too, not just the highlight.
+          ...surfacesFor(accent),
           "--fg-glow": `${accent}8c`,
           "--fg-glow-idle": `${accent}29`,
         } as CSSProperties
