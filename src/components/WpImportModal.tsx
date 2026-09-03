@@ -88,10 +88,10 @@ export default function WpImportModal({
         {!configured && (
           <div className="space-y-2.5 rounded-xl border border-line bg-panel/50 p-4">
             <p className="font-mono text-[10px] tracking-[0.2em] text-dust uppercase">connection · saved for next time</p>
-            <input value={settings.wp.url} onChange={(e) => patchSettings({ wp: { ...settings.wp, url: e.target.value } })} placeholder="https://yoursite.com" className="w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream" />
+            <input value={settings.wp.url} onChange={(e) => patchSettings({ wp: { ...settings.wp, url: e.target.value } })} placeholder="https://yoursite.com" className="w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream" />
             <div className="grid grid-cols-2 gap-2.5">
-              <input value={settings.wp.user} onChange={(e) => patchSettings({ wp: { ...settings.wp, user: e.target.value } })} placeholder="username" className="rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream" />
-              <input type="password" value={settings.wp.appPassword} onChange={(e) => patchSettings({ wp: { ...settings.wp, appPassword: e.target.value } })} placeholder="application password" className="rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream" />
+              <input value={settings.wp.user} onChange={(e) => patchSettings({ wp: { ...settings.wp, user: e.target.value } })} placeholder="username" className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream" />
+              <input type="password" value={settings.wp.appPassword} onChange={(e) => patchSettings({ wp: { ...settings.wp, appPassword: e.target.value } })} placeholder="application password" className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream" />
             </div>
             <p className="text-[11px] text-dust">WP admin → Users → Profile → Application Passwords. The password is shown once.</p>
           </div>
@@ -99,7 +99,7 @@ export default function WpImportModal({
 
         {configured && (
           <div className="flex items-center gap-3">
-            <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className="rounded-lg border border-line bg-[#191310] px-3 py-2 font-mono text-[12px] text-parch">
+            <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 font-mono text-[12px] text-parch">
               <option value="all">all batches</option>
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
@@ -115,7 +115,7 @@ export default function WpImportModal({
               <span className="text-parch">{running ? `uploading ${progress.current}…` : "run finished"}</span>
               <span className="text-dust">{progress.done}/{targets.length}</span>
             </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-[#191310]">
+            <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-field)]">
               <div className={`h-full rounded-full transition-all duration-500 ${running ? "stripes-live" : "bg-moss"}`} style={{ width: `${(progress.done / Math.max(targets.length, 1)) * 100}%` }} />
             </div>
             <p className="mt-2 font-mono text-[10.5px]">

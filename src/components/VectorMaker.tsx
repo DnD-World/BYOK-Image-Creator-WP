@@ -13,7 +13,7 @@ import { downloadBlob } from "../lib/output";
 import { Btn, IX } from "./ui";
 
 const field =
-  "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+  "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 const label = "mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase";
 
 const KINDS: { id: VectorKind; label: string; blurb: string; placeholder: string }[] = [
@@ -124,7 +124,7 @@ export default function VectorMaker({
                     key={k.id}
                     onClick={() => setKind(k.id)}
                     className={`btn-press rounded-lg border p-3 text-left ${
-                      k.id === kind ? "border-ember/60 bg-ember/10" : "border-line bg-[#191310]"
+                      k.id === kind ? "border-ember/60 bg-ember/10" : "border-line bg-[var(--color-field)]"
                     }`}
                   >
                     <span className="block text-[13px] font-semibold text-cream">{k.label}</span>
@@ -150,7 +150,7 @@ export default function VectorMaker({
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="icon_anvil" className={field} />
             </div>
 
-            <div className="rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+            <div className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5">
               <p className="font-mono text-[10.5px] text-dust">
                 written by {engine.model || "your text model"}
               </p>
@@ -190,10 +190,10 @@ export default function VectorMaker({
                   src={svgToDataUrl(asset.code)}
                   alt={asset.title}
                   className="max-h-56 w-full object-contain"
-                  style={{ color: "#241503" }}
+                  style={{ color: "var(--color-on-accent)" }}
                 />
               ) : asset?.code ? (
-                <p className="text-center font-mono text-[11px] text-[#241503]">
+                <p className="text-center font-mono text-[11px] text-[var(--color-on-accent)]">
                   Lottie animations need a player to move.
                   <br />
                   Save it and drop it into your page.

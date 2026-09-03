@@ -172,7 +172,7 @@ function ModelSelector({
       </button>
       {open && (
         <div className="pop-in absolute right-0 top-full z-40 mt-1.5 w-72 overflow-hidden rounded-xl border border-line2 bg-panel shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
-          <p className="border-b border-line bg-[#191310] px-3.5 py-2 font-mono text-[9px] tracking-[0.2em] text-dust uppercase">
+          <p className="border-b border-line bg-[var(--color-field)] px-3.5 py-2 font-mono text-[9px] tracking-[0.2em] text-dust uppercase">
             active engine — unavailable ones are hidden
           </p>
           {options.map((o) => {

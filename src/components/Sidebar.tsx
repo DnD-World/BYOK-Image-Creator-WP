@@ -48,7 +48,7 @@ export default function Sidebar(p: SidebarProps) {
     <aside className="flex h-full w-[256px] shrink-0 flex-col gap-4 overflow-y-auto border-r border-line bg-coal/70 p-4">
       <section>
         <h3 className="mb-2.5 font-mono text-[10px] tracking-[0.22em] text-dust uppercase">Manifest pulse</h3>
-        <div className="flex h-3 w-full overflow-hidden rounded-full border border-line bg-[#191310]">
+        <div className="flex h-3 w-full overflow-hidden rounded-full border border-line bg-[var(--color-field)]">
           {counts
             .filter((c) => c.n > 0)
             .map((c) => (
@@ -135,7 +135,7 @@ export default function Sidebar(p: SidebarProps) {
         </section>
       )}
 
-      <BorderGlow radius={12} glow={p.isRunning ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.4)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+      <BorderGlow radius={12} glow={p.isRunning ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "color-mix(in srgb, var(--color-ember) 40%, transparent)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
         <div className="p-3.5">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-mono text-[10px] tracking-[0.22em] text-dust uppercase">Generation queue</h3>
@@ -147,7 +147,7 @@ export default function Sidebar(p: SidebarProps) {
               { label: "failed", v: failed, cls: failed > 0 ? "text-blood" : "text-dust" },
               { label: "struck", v: `${finished}/${p.rows.length}`, cls: "text-moss" },
             ].map((x) => (
-              <div key={x.label} className="rounded-lg bg-[#191310] px-1 py-2">
+              <div key={x.label} className="rounded-lg bg-[var(--color-field)] px-1 py-2">
                 <div className={`font-display text-base leading-none ${x.cls}`}>{x.v}</div>
                 <div className="mt-1 font-mono text-[9px] tracking-widest text-dust uppercase">{x.label}</div>
               </div>
@@ -171,7 +171,7 @@ export default function Sidebar(p: SidebarProps) {
               <button
                 onClick={p.onRun}
                 disabled={queueLen === 0}
-                className={`btn-press flex w-full items-center justify-center gap-2 rounded-lg bg-ember py-2 text-[13px] font-semibold text-[#241503] shadow-[0_2px_0_#8a5a17,0_10px_24px_rgba(242,163,60,0.2)] hover:bg-[#ffb654] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${
+                className={`btn-press flex w-full items-center justify-center gap-2 rounded-lg bg-ember py-2 text-[13px] font-semibold text-[var(--color-on-accent)] shadow-[0_2px_0_#8a5a17,0_10px_24px_rgba(242,163,60,0.2)] hover:bg-[var(--color-accent-lift)] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${
                   queueLen > 0 ? "breathe" : ""
                 }`}
               >

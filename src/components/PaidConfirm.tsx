@@ -24,7 +24,7 @@ export default function PaidConfirm({
     ? "border-blood/50 bg-blood/10 text-blood"
     : check.credit?.endingSoon
       ? "border-ember/50 bg-ember/10 text-ember"
-      : "border-line bg-[#191310] text-parch";
+      : "border-line bg-[var(--color-field)] text-parch";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
@@ -65,7 +65,7 @@ export default function PaidConfirm({
                   <button
                     key={a.id}
                     onClick={() => onUseFree(a.id)}
-                    className="btn-press rounded-lg border border-line bg-[#191310] px-3 py-1.5 text-[12px] text-parch hover:border-moss/50 hover:text-moss"
+                    className="btn-press rounded-lg border border-line bg-[var(--color-field)] px-3 py-1.5 text-[12px] text-parch hover:border-moss/50 hover:text-moss"
                   >
                     {a.label}
                   </button>

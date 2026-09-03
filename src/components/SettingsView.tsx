@@ -56,7 +56,7 @@ const H = ({ children, className = "" }: { children: React.ReactNode; className?
 const P = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <p className={`text-[13.5px] leading-relaxed text-parch ${className}`}>{children}</p>
 );
-const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+const field = "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 
 /** One "does this work?" button, with its answer underneath. */
 function TestButton({
@@ -174,7 +174,7 @@ function KeyPoolEditor({
         </Btn>
       </div>
       {credits && (
-        <div className="mt-3 space-y-2 rounded-lg border border-line bg-[#191310] p-3">
+        <div className="mt-3 space-y-2 rounded-lg border border-line bg-[var(--color-field)] p-3">
           <p className="font-mono text-[10px] tracking-[0.2em] text-dust uppercase">when does each credit run out?</p>
           {pool
             .filter((k) => k.key.trim())
@@ -242,7 +242,7 @@ function KeyPoolEditor({
       )}
 
       {poolNote && (
-        <p className="mt-2 rounded-lg border border-line bg-[#191310] px-3 py-2 text-[11.5px] text-parch">{poolNote}</p>
+        <p className="mt-2 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[11.5px] text-parch">{poolNote}</p>
       )}
       {poolResults.length > 0 && (
         <div className="mt-2 space-y-1">
@@ -756,7 +756,7 @@ export default function SettingsView({
                 const m = PROVIDER_META[id];
                 const active = settings.provider === id;
                 return (
-                  <BorderGlow key={id} radius={14} glow={active ? "rgba(242,163,60,0.65)" : "rgba(242,163,60,0.4)"} idle={active ? "rgba(242,163,60,0.55)" : "#3e2f21"} innerClassName={active ? "bg-[#2a1e12]" : "bg-[#241b14]"}>
+                  <BorderGlow key={id} radius={14} glow={active ? "rgba(242,163,60,0.65)" : "color-mix(in srgb, var(--color-ember) 40%, transparent)"} idle={active ? "rgba(242,163,60,0.55)" : "#3e2f21"} innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}>
                     <button onClick={() => patchSettings({ provider: id })} className="btn-press w-full p-4 text-left">
                       <span className="flex items-center gap-2.5">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.dot }} />
@@ -897,7 +897,7 @@ export default function SettingsView({
                   step={1}
                   value={settings.cloudflareSteps}
                   onChange={(e) => patchSettings({ cloudflareSteps: Number(e.target.value) })}
-                  className="h-1.5 w-full accent-[#f2a33c]"
+                  className="h-1.5 w-full accent-[var(--color-ember)]"
                 />
                 <p className="mt-1.5 text-[11px] text-dust">
                   More steps means a better picture and fewer pictures per day, because Cloudflare charges by the step.
@@ -1054,12 +1054,12 @@ export default function SettingsView({
                 Most models cannot spell. Ask a small model for a shop sign and you get convincing gibberish. Only
                 Google's models and DALL·E write real words reliably.
               </p>
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={settings.suppressTextOnWeakModels}
                   onChange={(e) => patchSettings({ suppressTextOnWeakModels: e.target.checked })}
-                  className="h-4 w-4 accent-[#f2a33c]"
+                  className="h-4 w-4 accent-[var(--color-ember)]"
                 />
                 <span>
                   <span className="block text-[13px] font-semibold text-cream">
@@ -1121,12 +1121,12 @@ export default function SettingsView({
                 engines) rewrites each prompt to suit whoever is drawing it — just before sending, never in your
                 manifest. If the text model is unreachable the original prompt is used and the forge says so.
               </p>
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={settings.tailorPrompts}
                   onChange={(e) => patchSettings({ tailorPrompts: e.target.checked })}
-                  className="h-4 w-4 accent-[#f2a33c]"
+                  className="h-4 w-4 accent-[var(--color-ember)]"
                 />
                 <span>
                   <span className="block text-[13px] font-semibold text-cream">Rewrite each prompt for its model</span>
@@ -1159,7 +1159,7 @@ export default function SettingsView({
                   step={1}
                   value={settings.concurrency}
                   onChange={(e) => patchSettings({ concurrency: Number(e.target.value) })}
-                  className="h-1.5 flex-1 accent-[#f2a33c]"
+                  className="h-1.5 flex-1 accent-[var(--color-ember)]"
                 />
                 <span className="w-28 shrink-0 text-right font-mono text-[12px] text-cream">
                   {settings.concurrency === 1 ? "one at a time" : `${settings.concurrency} at once`}
@@ -1172,7 +1172,7 @@ export default function SettingsView({
               <p className="mt-1 text-[12px] text-dust">hours a row rests after its whole key pool is rate-limited. 24h suits daily quotas; 0 retries at once.</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {MODELS.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2.5 rounded-lg border border-line bg-[#191310] px-3 py-2">
+                  <div key={m.id} className="flex items-center gap-2.5 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono text-[11.5px] text-cream">{m.id}</span>
                       <span className="block font-mono text-[9px] text-dust">{m.free} · used {usedToday(settings.usage, m.id)}/day</span>
@@ -1195,7 +1195,7 @@ export default function SettingsView({
                 type="checkbox"
                 checked={settings.autoRetry}
                 onChange={(e) => patchSettings({ autoRetry: e.target.checked })}
-                className="h-4 w-4 accent-[#f2a33c]"
+                className="h-4 w-4 accent-[var(--color-ember)]"
               />
               <span>
                 <span className="block text-[13.5px] font-semibold text-cream">Automatic retry</span>
@@ -1235,7 +1235,7 @@ export default function SettingsView({
                       return (
                         <div
                           key={st.id}
-                          className={`rounded-lg border p-3 ${locked ? "border-ember/60 bg-ember/8" : "border-line bg-[#191310]"}`}
+                          className={`rounded-lg border p-3 ${locked ? "border-ember/60 bg-ember/8" : "border-line bg-[var(--color-field)]"}`}
                         >
                           <div className="flex items-start gap-2.5">
                             <span className="mt-0.5 flex shrink-0 overflow-hidden rounded">
@@ -1257,7 +1257,7 @@ export default function SettingsView({
                             <button
                               onClick={() => onLockStyle?.(st.id)}
                               className={`btn-press shrink-0 rounded-md px-2 py-1 font-mono text-[9.5px] tracking-wider uppercase ${
-                                locked ? "bg-ember text-[#241503]" : "border border-line text-dust hover:text-cream"
+                                locked ? "bg-ember text-[var(--color-on-accent)]" : "border border-line text-dust hover:text-cream"
                               }`}
                             >
                               {locked ? "in use" : "use"}
@@ -1490,7 +1490,7 @@ export default function SettingsView({
               )}
             </div>
             <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-parch">
-              <input type="checkbox" checked={settings.writeCsvOnSync} onChange={(e) => patchSettings({ writeCsvOnSync: e.target.checked })} className="accent-[#f2a33c]" />
+              <input type="checkbox" checked={settings.writeCsvOnSync} onChange={(e) => patchSettings({ writeCsvOnSync: e.target.checked })} className="accent-[var(--color-ember)]" />
               refresh marketplace-images.csv inside the folder after each run
             </label>
           </>
@@ -1563,7 +1563,7 @@ export default function SettingsView({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(
                 [
-                  { id: "none", name: "Quiet", hint: "plain dark canvas" },
+                  { id: "none", name: "Quiet", hint: "plain dark canvas — also turns off the corner lights" },
                   { id: "dots", name: "Dot field", hint: "dots that part around your cursor" },
                   { id: "embers", name: "Rising embers", hint: "sparks drifting up from the forge" },
                   { id: "stars", name: "Night sky", hint: "twinkling stars, the odd shooting star" },
@@ -1834,7 +1834,7 @@ export default function SettingsView({
                     { key: "market", label: "Marketplace progress", desc: "Emberfair purse, satchel, standing" },
                   ] as const
                 ).map((o) => (
-                  <label key={o.key} className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+                  <label key={o.key} className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5">
                     <input
                       type="checkbox"
                       checked={resetChecks[o.key]}

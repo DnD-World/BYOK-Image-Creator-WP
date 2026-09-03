@@ -69,7 +69,7 @@ export interface Toast {
 export const STATUSES: Status[] = ["pending", "generating", "done", "failed", "skipped", "imported"];
 
 export const STATUS_META: Record<Status, { label: string; hex: string; chip: string; dot: string }> = {
-  pending: { label: "pending", hex: "#97876d", chip: "bg-[#97876d]/12 text-parch border-[#97876d]/35", dot: "bg-dust" },
+  pending: { label: "pending", hex: "#97876d", chip: "bg-[var(--color-dust)]/12 text-parch border-[var(--color-dust)]/35", dot: "bg-dust" },
   generating: { label: "generating", hex: "#f2a33c", chip: "bg-ember/12 text-ember border-ember/40", dot: "bg-ember" },
   done: { label: "done", hex: "#8cb56f", chip: "bg-moss/12 text-moss border-moss/40", dot: "bg-moss" },
   failed: { label: "failed", hex: "#e2593f", chip: "bg-blood/12 text-blood border-blood/40", dot: "bg-blood" },

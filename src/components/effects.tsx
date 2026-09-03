@@ -16,6 +16,12 @@ interface DotFieldProps {
   glowColor?: string;
 }
 
+/** A theme token as a real colour, for canvas work that cannot take var(). */
+const cssColor = (name: string, fallback: string): string => {
+  if (typeof document === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+};
+
 export function DotField({
   className = "",
   dotRadius = 1.25,
@@ -346,7 +352,7 @@ export function StarField({ className = "", density = 90 }: { className?: string
       for (const s of stars) {
         const a = reduced ? 0.5 : 0.25 + 0.55 * Math.abs(Math.sin(t * 0.0008 * s.speed + s.phase));
         ctx.globalAlpha = a;
-        ctx.fillStyle = "#f4e8d4";
+        ctx.fillStyle = cssColor("--color-cream", "#f4e8d4");
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
@@ -360,7 +366,7 @@ export function StarField({ className = "", density = 90 }: { className?: string
           shoot.y += shoot.vy;
           shoot.life -= 0.02;
           ctx.globalAlpha = Math.max(shoot.life, 0) * 0.9;
-          ctx.strokeStyle = "#f4e8d4";
+          ctx.strokeStyle = cssColor("--color-cream", "#f4e8d4");
           ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.moveTo(shoot.x, shoot.y);

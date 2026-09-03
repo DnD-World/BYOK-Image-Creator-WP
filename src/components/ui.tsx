@@ -211,11 +211,11 @@ export function Btn({
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant }) {
   const styles: Record<BtnVariant, string> = {
-    primary: "bg-ember text-[#241503] hover:bg-[#ffb654] shadow-[0_2px_0_#8a5a17,0_10px_24px_rgba(242,163,60,0.22)] font-semibold",
+    primary: "bg-ember text-[var(--color-on-accent)] hover:bg-[var(--color-accent-lift)] shadow-[0_2px_0_var(--color-accent-deep),0_10px_24px_color-mix(in_srgb,var(--color-ember)_22%,transparent)] font-semibold",
     ghost: "border border-line2 bg-panel2/60 text-parch hover:text-cream hover:border-ember/50 hover:bg-raise/70",
     danger: "border border-blood/40 bg-blood/10 text-blood hover:bg-blood/20",
     subtle: "text-dust hover:text-cream hover:bg-raise/60",
-    moss: "bg-moss text-[#15230c] hover:bg-[#9cc47f] shadow-[0_2px_0_#4f6b3c] font-semibold",
+    moss: "bg-moss text-[#15230c] hover:bg-[#9cc47f] shadow-[0_2px_0_color-mix(in_srgb,var(--color-moss)_60%,black)] font-semibold",
   };
   return (
     <button
@@ -263,7 +263,7 @@ export function Modal({
 
 export function CodeBlock({ code }: { code: string }) {
   return (
-    <pre className="overflow-x-auto rounded-xl border border-line bg-[#191310] p-3.5 font-mono text-[11px] leading-relaxed whitespace-pre text-parch">
+    <pre className="overflow-x-auto rounded-xl border border-line bg-[var(--color-field)] p-3.5 font-mono text-[11px] leading-relaxed whitespace-pre text-parch">
       {code}
     </pre>
   );

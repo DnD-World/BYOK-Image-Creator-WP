@@ -76,7 +76,7 @@ const Thumb = ({ row }: { row: ManifestRow }) => {
   if (!row.preview) {
     return (
       <div
-        className={`flex items-center justify-center overflow-hidden rounded-lg border border-dashed border-line2 bg-[#191310] ${
+        className={`flex items-center justify-center overflow-hidden rounded-lg border border-dashed border-line2 bg-[var(--color-field)] ${
           row.status === "generating" ? "shimmer" : ""
         }`}
         style={{ width: 64, height: Math.round(64 / ratio) }}
@@ -112,7 +112,7 @@ export default function ManifestView(p: ManifestViewProps) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* toolbar */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-coal/50 px-4 py-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-line bg-[#191310] px-2.5 py-1.5">
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-[var(--color-field)] px-2.5 py-1.5">
           <ISearch size={13} className="text-dust" />
           <input
             value={p.search}
@@ -124,7 +124,7 @@ export default function ManifestView(p: ManifestViewProps) {
         <select
           value={p.statusFilter}
           onChange={(e) => p.setStatusFilter(e.target.value as Status | "all")}
-          className="rounded-lg border border-line bg-[#191310] px-2 py-1.5 font-mono text-[11.5px] text-parch"
+          className="rounded-lg border border-line bg-[var(--color-field)] px-2 py-1.5 font-mono text-[11.5px] text-parch"
         >
           <option value="all">all statuses</option>
           {Object.keys(STATUS_META).map((s) => (
@@ -134,7 +134,7 @@ export default function ManifestView(p: ManifestViewProps) {
         <select
           value={p.catFilter}
           onChange={(e) => p.setCatFilter(e.target.value as Category | "all")}
-          className="rounded-lg border border-line bg-[#191310] px-2 py-1.5 font-mono text-[11.5px] text-parch"
+          className="rounded-lg border border-line bg-[var(--color-field)] px-2 py-1.5 font-mono text-[11.5px] text-parch"
         >
           <option value="all">all categories</option>
           {CATEGORIES.map((c) => (
@@ -279,7 +279,7 @@ export default function ManifestView(p: ManifestViewProps) {
 
 /* ---------------- row drawer ---------------- */
 
-const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+const field = "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 
 function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
   const { row, updateRow, deleteRow, duplicateRow, generateOne, forceRetry, setToPending, markSkipped, markImported, downloadRow, openScribe, onSelect, compare, strikeVariant, keepVariant, discardVariant } = p;
@@ -300,7 +300,7 @@ function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
 
       <div className="space-y-4">
         {/* preview */}
-        <div className="flex justify-center rounded-xl border border-line bg-[#191310] p-3">
+        <div className="flex justify-center rounded-xl border border-line bg-[var(--color-field)] p-3">
           <Thumb row={row} />
         </div>
 
@@ -356,7 +356,7 @@ function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
           <label className="mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase">prompt</label>
           <textarea value={row.prompt} onChange={(e) => updateRow(row.id, { prompt: e.target.value })} rows={4} className={`${field} resize-y`} />
           <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-dust">
-            <input type="checkbox" checked={p.appendStyle} onChange={(e) => p.setAppendStyle(e.target.checked)} className="accent-[#f2a33c]" />
+            <input type="checkbox" checked={p.appendStyle} onChange={(e) => p.setAppendStyle(e.target.checked)} className="accent-[var(--color-ember)]" />
             append the “{p.styleLock}” style block when generating
           </label>
         </div>
@@ -552,16 +552,16 @@ function ImportModal({
         />
         <div className="flex items-center gap-4">
           <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-parch">
-            <input type="radio" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-[#f2a33c]" />
+            <input type="radio" checked={mode === "merge"} onChange={() => setMode("merge")} className="accent-[var(--color-ember)]" />
             merge into the manifest
           </label>
           <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-parch">
-            <input type="radio" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-[#f2a33c]" />
+            <input type="radio" checked={mode === "replace"} onChange={() => setMode("replace")} className="accent-[var(--color-ember)]" />
             replace everything
           </label>
         </div>
         <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-ember/30 bg-ember/6 px-3.5 py-2.5">
-          <input type="checkbox" checked={forgeAfter} onChange={(e) => setForgeAfter(e.target.checked)} className="mt-0.5 accent-[#f2a33c]" />
+          <input type="checkbox" checked={forgeAfter} onChange={(e) => setForgeAfter(e.target.checked)} className="mt-0.5 accent-[var(--color-ember)]" />
           <span className="text-[12.5px] leading-snug text-parch">
             <span className="font-semibold text-ember">forge immediately after import</span>
             <span className="block text-[11px] text-dust">every pending row in the CSV goes straight into the queue — CSV in, images out</span>

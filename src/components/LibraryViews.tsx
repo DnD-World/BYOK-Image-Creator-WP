@@ -12,7 +12,7 @@ const RatioThumb = ({ row, width = 150 }: { row: ManifestRow; width?: number }) 
   const h = Math.max(48, Math.round((width * dims.h) / dims.w));
   if (!row.preview)
     return (
-      <div className="flex items-center justify-center rounded-lg border border-dashed border-line2 bg-[#191310]" style={{ width, height: h }}>
+      <div className="flex items-center justify-center rounded-lg border border-dashed border-line2 bg-[var(--color-field)]" style={{ width, height: h }}>
         <span className="font-mono text-[10px] text-dust">no plate yet</span>
       </div>
     );
@@ -68,7 +68,7 @@ export function ImageLibrary({
   const marked = rows.filter((r) => r.status === "failed" || ((r.note ?? "").trim() !== "" && (r.status === "done" || r.status === "imported")));
   const liked = rows.filter((r) => r.rating === "like").length;
 
-  const sel = "rounded-lg border border-line bg-[#191310] px-2.5 py-2 font-mono text-[11px] text-cream";
+  const sel = "rounded-lg border border-line bg-[var(--color-field)] px-2.5 py-2 font-mono text-[11px] text-cream";
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
@@ -133,7 +133,7 @@ export function ImageLibrary({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {shown.map((r) => (
-            <BorderGlow key={r.id} radius={14} glow={r.rating === "like" ? "rgba(140,181,111,0.5)" : "rgba(242,163,60,0.45)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+            <BorderGlow key={r.id} radius={14} glow={r.rating === "like" ? "rgba(140,181,111,0.5)" : "color-mix(in srgb, var(--color-ember) 45%, transparent)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
               <div className="p-3">
                 <div className="relative flex justify-center">
                   <RatioThumb row={r} width={220} />
@@ -142,14 +142,14 @@ export function ImageLibrary({
                     <button
                       onClick={() => updateRow(r.id, { rating: r.rating === "like" ? undefined : "like" })}
                       title="I like this one"
-                      className={`btn-press rounded-md border p-1.5 backdrop-blur ${r.rating === "like" ? "border-moss/70 bg-moss/25 text-moss" : "border-line bg-[#191310]/80 text-dust hover:text-moss"}`}
+                      className={`btn-press rounded-md border p-1.5 backdrop-blur ${r.rating === "like" ? "border-moss/70 bg-moss/25 text-moss" : "border-line bg-[var(--color-field)]/80 text-dust hover:text-moss"}`}
                     >
                       <IThumbUp size={12} />
                     </button>
                     <button
                       onClick={() => updateRow(r.id, { rating: r.rating === "dislike" ? undefined : "dislike" })}
                       title="not good enough"
-                      className={`btn-press rounded-md border p-1.5 backdrop-blur ${r.rating === "dislike" ? "border-blood/70 bg-blood/25 text-blood" : "border-line bg-[#191310]/80 text-dust hover:text-blood"}`}
+                      className={`btn-press rounded-md border p-1.5 backdrop-blur ${r.rating === "dislike" ? "border-blood/70 bg-blood/25 text-blood" : "border-line bg-[var(--color-field)]/80 text-dust hover:text-blood"}`}
                     >
                       <IThumbDown size={12} />
                     </button>
@@ -168,7 +168,7 @@ export function ImageLibrary({
                   value={r.note ?? ""}
                   onChange={(e) => updateRow(r.id, { note: e.target.value || undefined })}
                   placeholder="✎ what should be better…"
-                  className="mt-2 w-full rounded-lg border border-line bg-[#191310] px-2.5 py-1.5 text-[11.5px] text-cream placeholder:text-dust/50"
+                  className="mt-2 w-full rounded-lg border border-line bg-[var(--color-field)] px-2.5 py-1.5 text-[11.5px] text-cream placeholder:text-dust/50"
                 />
                 <div className="mt-2 flex gap-1.5">
                   {(r.status === "done" || r.status === "imported") && (
@@ -277,7 +277,7 @@ export function StyleLibrary({
         {all.map((s) => {
           const active = styleLock === s.id;
           return (
-            <BorderGlow key={s.id} radius={14} glow={active ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.4)"} idle={active ? "rgba(242,163,60,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#2a1e12]" : "bg-[#241b14]"}>
+            <BorderGlow key={s.id} radius={14} glow={active ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "color-mix(in srgb, var(--color-ember) 40%, transparent)"} idle={active ? "color-mix(in srgb, var(--color-ember) 50%, transparent)" : "var(--color-line)"} innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}>
               <div className="p-4">
                 <div className="flex items-center gap-3">
                   <span className="flex overflow-hidden rounded-md border border-line">
@@ -308,8 +308,8 @@ export function StyleLibrary({
       <div className="mt-8 rounded-2xl border border-line bg-panel/50 p-5">
         <p className="font-display text-[15px] tracking-wide text-cream">Add your own style</p>
         <div className="mt-3 grid gap-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name — e.g. Ink & Wash" className="w-full rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60" />
-          <textarea value={block} onChange={(e) => setBlock(e.target.value)} rows={2} placeholder="the style block appended to every prompt — e.g. ink and brush wash style, muted earth tones…" className="w-full resize-y rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[12.5px] text-cream placeholder:text-dust/60" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name — e.g. Ink & Wash" className="w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60" />
+          <textarea value={block} onChange={(e) => setBlock(e.target.value)} rows={2} placeholder="the style block appended to every prompt — e.g. ink and brush wash style, muted earth tones…" className="w-full resize-y rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5 text-[12.5px] text-cream placeholder:text-dust/60" />
           <div className="flex flex-wrap gap-2">
             <Btn
               variant="primary"
@@ -328,7 +328,7 @@ export function StyleLibrary({
         <div className="mt-4 border-t border-line pt-4">
           <p className="font-mono text-[10px] tracking-[0.2em] text-potion uppercase">or let the text model invent one</p>
           <div className="mt-2 flex gap-2">
-            <input value={craft} onChange={(e) => setCraft(e.target.value)} placeholder="describe the look — e.g. old woodblock prints with rough edges" className="min-w-0 flex-1 rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[12.5px] text-cream placeholder:text-dust/60" />
+            <input value={craft} onChange={(e) => setCraft(e.target.value)} placeholder="describe the look — e.g. old woodblock prints with rough edges" className="min-w-0 flex-1 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5 text-[12.5px] text-cream placeholder:text-dust/60" />
             <Btn variant="ghost" onClick={aiCraft} disabled={crafting || !settings.scribe.key.trim() || !craft.trim()}>
               <IWand size={12} /> {crafting ? "crafting…" : "Craft with AI"}
             </Btn>
@@ -371,7 +371,7 @@ export function TemplateLibrary({
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {setups.map((t) => (
-            <BorderGlow key={t.id} radius={14} glow="rgba(177,140,224,0.45)" idle="#3e2f21" innerClassName="bg-[#241b14]">
+            <BorderGlow key={t.id} radius={14} glow="rgba(177,140,224,0.45)" idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
               <div className="p-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-display text-[16px] tracking-wide text-cream">{t.name}</p>
@@ -436,7 +436,7 @@ export function BatchLibrary({
             const failed = bRows.filter((r) => r.status === "failed").length;
             const cooling = bRows.filter((r) => r.retry_at && Date.parse(r.retry_at) > Date.now());
             return (
-              <BorderGlow key={b.id} radius={14} glow="rgba(86,184,165,0.4)" idle="#3e2f21" innerClassName="bg-[#241b14]">
+              <BorderGlow key={b.id} radius={14} glow="rgba(86,184,165,0.4)" idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
                 <div className="flex flex-wrap items-center gap-5 p-4">
                   {/* live preview strip */}
                   <div className="flex shrink-0 gap-1.5">
@@ -450,7 +450,7 @@ export function BatchLibrary({
                     <p className="mt-0.5 font-mono text-[10.5px] text-dust">
                       {new Date(b.createdAt).toLocaleString("en-GB")} · {bRows.length} pictures{b.setupName ? ` · recipe “${b.setupName}”` : ""}
                     </p>
-                    <div className="mt-2 flex h-2 w-full max-w-xs overflow-hidden rounded-full bg-[#191310]">
+                    <div className="mt-2 flex h-2 w-full max-w-xs overflow-hidden rounded-full bg-[var(--color-field)]">
                       {done > 0 && <div className="h-full bg-moss transition-all duration-700" style={{ width: `${(done / Math.max(bRows.length, 1)) * 100}%` }} />}
                       {failed > 0 && <div className="h-full bg-blood transition-all duration-700" style={{ width: `${(failed / Math.max(bRows.length, 1)) * 100}%` }} />}
                     </div>

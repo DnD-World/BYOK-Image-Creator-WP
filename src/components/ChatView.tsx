@@ -549,7 +549,7 @@ ${manifestDigest(rows)}`,
           e.preventDefault();
           void send(draft);
         }}
-        className="mt-3 rounded-xl border border-line bg-[#191310] p-2"
+        className="mt-3 rounded-xl border border-line bg-[var(--color-field)] p-2"
       >
         <textarea
           ref={taRef}
@@ -651,7 +651,7 @@ function EditCard({
       </p>
       <div className="mt-2 max-h-72 space-y-2 overflow-y-auto">
         {previews.map((p) => (
-          <div key={p.id} className="rounded-lg border border-line bg-[#191310]/70 p-2">
+          <div key={p.id} className="rounded-lg border border-line bg-[var(--color-field)]/70 p-2">
             <p className="font-mono text-[10.5px] text-dust">
               #{p.id} {p.filename}
             </p>
@@ -702,7 +702,7 @@ function BatchCard({
   const total = each * rows.length;
 
   return (
-    <div className="mt-2.5 rounded-xl border border-line2 bg-[#191310]/70 p-3">
+    <div className="mt-2.5 rounded-xl border border-line2 bg-[var(--color-field)]/70 p-3">
       <p className="text-[12.5px] text-cream">
         {rows.length} pictures{" "}
         <span className="text-dust">
@@ -752,7 +752,7 @@ function ProposalCard({
   const free = !model || model.priceUsd === 0 || model.priceUsd === null;
 
   return (
-    <div className="mt-2.5 rounded-xl border border-line2 bg-[#191310]/70 p-3">
+    <div className="mt-2.5 rounded-xl border border-line2 bg-[var(--color-field)]/70 p-3">
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="rounded-full border border-line px-2 py-0.5 text-parch">{style?.name ?? plan.style}</span>
         <span className="rounded-full border border-line px-2 py-0.5 text-parch">{plan.aspect}</span>

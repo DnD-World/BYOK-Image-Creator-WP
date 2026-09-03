@@ -26,7 +26,44 @@ const SURFACES: { name: string; s: number; l: number }[] = [
   { name: "raise", s: 30, l: 17 },
   { name: "line", s: 30, l: 19 },
   { name: "line2", s: 28, l: 24 },
+  // The inside of anything you type into, and the inset the menu sits in.
+  // This was #191310 in sixty-odd places and is the one surface people notice
+  // most, because it is what a form looks like.
+  { name: "field", s: 26, l: 8 },
+  { name: "scroll", s: 30, l: 22 },
 ];
+
+/**
+ * Text tones, tinted but not weakened.
+ *
+ * Saturation and lightness are measured from the originals, so the contrast
+ * against the surfaces is identical to what it always was — only the hue
+ * moves. A page can take on a colour without becoming harder to read, and
+ * these are the values that keep that true.
+ */
+const TEXTS: { name: string; s: number; l: number }[] = [
+  { name: "cream", s: 60, l: 89 },
+  { name: "parch", s: 33, l: 71 },
+  { name: "dust", s: 17, l: 51 },
+];
+
+/**
+ * The accent, in the four forms a button needs.
+ *
+ * The primary button had a hand-picked darker orange under it for its lip and
+ * a hand-picked lighter one for hover, so a blue accent still sat on an orange
+ * shadow. These are derived, so the whole control moves together.
+ */
+const ACCENT_ROLES: { name: string; dl: number; ds: number }[] = [
+  { name: "accent-deep", dl: -26, ds: 0 }, // the 3D lip under a pressed button
+  { name: "accent-lift", dl: 8, ds: 0 }, // hover
+  { name: "on-accent", dl: -52, ds: -10 }, // text sitting on the accent
+];
+
+/** Which returned tokens are backgrounds, which are text, which are accent. */
+export const SURFACE_VARS = SURFACES.map((x) => `--color-${x.name}`);
+export const TEXT_VARS = TEXTS.map((x) => `--color-${x.name}`);
+export const ACCENT_VARS = ACCENT_ROLES.map((x) => `--color-${x.name}`);
 
 /** #rrggbb → {h,s,l}, with h in degrees. */
 export function hexToHsl(hex: string): { h: number; s: number; l: number } {
@@ -90,6 +127,18 @@ export function surfacesFor(accentHex: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const surface of SURFACES) {
     out[`--color-${surface.name}`] = hslToHex(h, surface.s * strength, surface.l);
+  }
+  for (const text of TEXTS) {
+    out[`--color-${text.name}`] = hslToHex(h, text.s * strength, text.l);
+  }
+
+  const { l } = hexToHsl(accentHex);
+  for (const role of ACCENT_ROLES) {
+    out[`--color-${role.name}`] = hslToHex(
+      h,
+      Math.max(0, Math.min(100, s + role.ds)),
+      Math.max(2, Math.min(98, l + role.dl))
+    );
   }
   return out;
 }

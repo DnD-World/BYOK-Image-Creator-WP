@@ -7,7 +7,7 @@ import { downloadBlob } from "../lib/output";
 import { Btn, IX } from "./ui";
 
 const field =
-  "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+  "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 
 /**
  * Turn one finished picture into a looping GIF.
@@ -186,7 +186,7 @@ export default function GifMaker({
                   className={`mt-2 rounded-lg border px-3 py-2 text-[11.5px] ${
                     plan.beyondReach
                       ? "border-ember/40 bg-ember/10 text-ember"
-                      : "border-line bg-[#191310] text-parch"
+                      : "border-line bg-[var(--color-field)] text-parch"
                   }`}
                 >
                   {note}
@@ -205,7 +205,7 @@ export default function GifMaker({
                       setPlan(sanitisePlan({ ...p.plan }));
                       setNote(p.hint);
                     }}
-                    className="btn-press rounded-lg border border-line bg-[#191310] px-2.5 py-1.5 text-[11.5px] text-parch hover:border-ember/50 hover:text-cream"
+                    className="btn-press rounded-lg border border-line bg-[var(--color-field)] px-2.5 py-1.5 text-[11.5px] text-parch hover:border-ember/50 hover:text-cream"
                   >
                     {p.label}
                   </button>
@@ -224,7 +224,7 @@ export default function GifMaker({
                   max={48}
                   value={plan.frames}
                   onChange={(e) => setPlan({ ...plan, frames: Number(e.target.value) })}
-                  className="h-1.5 w-full accent-[#f2a33c]"
+                  className="h-1.5 w-full accent-[var(--color-ember)]"
                 />
               </div>
               <div>
@@ -238,7 +238,7 @@ export default function GifMaker({
                   step={10}
                   value={plan.frameMs}
                   onChange={(e) => setPlan({ ...plan, frameMs: Number(e.target.value) })}
-                  className="h-1.5 w-full accent-[#f2a33c]"
+                  className="h-1.5 w-full accent-[var(--color-ember)]"
                 />
               </div>
             </div>
@@ -248,12 +248,12 @@ export default function GifMaker({
                 type="checkbox"
                 checked={plan.pingPong}
                 onChange={(e) => setPlan({ ...plan, pingPong: e.target.checked })}
-                className="h-4 w-4 accent-[#f2a33c]"
+                className="h-4 w-4 accent-[var(--color-ember)]"
               />
               Return to the start, so it loops without a jump
             </label>
 
-            <div className="rounded-lg border border-line bg-[#191310] px-3 py-2">
+            <div className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2">
               <p className="text-[11px] text-dust">
                 About {est} KB at {plan.frames} frames. Fewer frames means a much smaller file.
               </p>

@@ -8,6 +8,11 @@
   --color-raise: #372a1e;
   --color-line: #3e2f21;
   --color-line2: #57432c;
+  --color-field: #191310;
+  --color-scroll: #4a3826;
+  --color-accent-deep: #8a5a17;
+  --color-accent-lift: #ffb654;
+  --color-on-accent: #241503;
   --color-cream: #f4e8d4;
   --color-parch: #cdbc9f;
   --color-dust: #97876d;
@@ -42,21 +47,21 @@ body {
 
 ::selection {
   background: rgba(242, 163, 60, 0.35);
-  color: #fff7e8;
+  color: var(--color-cream);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #4a3826 transparent;
+  scrollbar-color: var(--color-scroll) transparent;
 }
 *::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #4a3826;
+  background: var(--color-scroll);
   border-radius: 8px;
-  border: 2px solid #1d1611;
+  border: 2px solid var(--color-coal);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -165,8 +170,8 @@ body {
 }
 
 @keyframes breathe {
-  0%, 100% { box-shadow: 0 2px 0 #8a5a17, 0 0 0 0 rgba(242, 163, 60, 0.4); }
-  50% { box-shadow: 0 2px 0 #8a5a17, 0 0 26px 3px rgba(242, 163, 60, 0.28); }
+  0%, 100% { box-shadow: 0 2px 0 var(--color-accent-deep), 0 0 0 0 color-mix(in srgb, var(--color-ember) 40%, transparent); }
+  50% { box-shadow: 0 2px 0 var(--color-accent-deep), 0 0 26px 3px color-mix(in srgb, var(--color-ember) 28%, transparent); }
 }
 .breathe {
   animation: breathe 2.4s ease-in-out infinite;
@@ -337,7 +342,7 @@ body {
 
 /* ---------- crafted surfaces ---------- */
 .plaque {
-  background: linear-gradient(168deg, #2b2016 0%, #221912 100%);
+  background: linear-gradient(168deg, var(--color-panel2) 0%, var(--color-panel) 100%);
   border: 1px solid var(--color-line);
   box-shadow: 0 1px 0 rgba(255, 226, 170, 0.05) inset, 0 14px 34px rgba(0, 0, 0, 0.38);
 }

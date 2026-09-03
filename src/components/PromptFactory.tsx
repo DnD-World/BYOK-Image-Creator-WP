@@ -9,7 +9,7 @@ import { generateIdeas } from "../lib/batches";
 import { downloadCsv } from "../lib/csv";
 import { Btn, CatChip, ICheck, IPlus, IRetry, ITrash, IUpload, IWand, IX } from "./ui";
 
-const field = "w-full rounded-lg border border-line bg-[#191310] px-2.5 py-1.5 text-[12px] text-cream placeholder:text-dust/50";
+const field = "w-full rounded-lg border border-line bg-[var(--color-field)] px-2.5 py-1.5 text-[12px] text-cream placeholder:text-dust/50";
 
 export default function PromptFactory({
   settings,
@@ -328,7 +328,7 @@ export default function PromptFactory({
           <div className="overflow-x-auto rounded-xl border border-line">
             <table className="w-full min-w-[780px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line bg-[#191310] font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
+                <tr className="border-b border-line bg-[var(--color-field)] font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
                   <th className="px-3.5 py-2.5 font-medium w-[24%]">filename</th>
                   <th className="px-3.5 py-2.5 font-medium w-[8%]">cat</th>
                   <th className="px-3.5 py-2.5 font-medium w-[34%]">prompt</th>

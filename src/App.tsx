@@ -1437,6 +1437,22 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     else root.setAttribute("data-motion", motionPref);
   }, [motionPref]);
 
+  /**
+   * The palette goes on <html>, not on the app's own div.
+   *
+   * CSS variables cascade downwards, and some of the things that need them
+   * live ABOVE the app: the scrollbar is styled on <html>, and the page
+   * background on <body>. Setting them on a div left the scrollbar the
+   * original brown whatever accent was chosen.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const palette = surfacesFor(accentHex(settings.ambient.accent));
+    for (const [name, value] of Object.entries(palette)) root.style.setProperty(name, value);
+    root.style.setProperty("--color-ember", accentHex(settings.ambient.accent));
+    root.style.setProperty("--accent", accentHex(settings.ambient.accent));
+  }, [settings.ambient.accent]);
+
   /** What the motion components should do. "system" resolves at use site. */
   const motionLevel: MotionLevel = motionPref === "system" ? "full" : motionPref;
 
@@ -1446,10 +1462,9 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       data-glow={settings.ambient.glow}
       style={
         {
-          "--color-ember": accent,
-          "--accent": accent,
-          // The room takes the accent's hue too, not just the highlight.
-          ...surfacesFor(accent),
+          // The palette itself is set on <html> in the effect above, because
+          // the scrollbar and the page background live there. These two stay
+          // for the glow, which is scoped to the app.
           "--fg-glow": `${accent}8c`,
           "--fg-glow-idle": `${accent}29`,
         } as CSSProperties
@@ -1465,7 +1480,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           glowRadius={230}
           sparkle={settings.ambient.sparkle}
           waveAmplitude={settings.ambient.wave ? 2.2 : 0}
-          gradientFrom="rgba(205,188,159,0.20)"
+          gradientFrom="color-mix(in srgb, var(--color-parch) 20%, transparent)"
           gradientTo={`${accent}26`}
           glowColor={`${accent}14`}
         />
@@ -1477,9 +1492,29 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
       <CursorFX mode={settings.ambient.cursor} size={settings.ambient.cursorSize} color={accent} />
       {settings.ambient.background !== "none" && (
         <>
-          <div className="lantern-glow" style={{ top: -140, left: -120, width: 460, height: 460, background: "rgba(242,163,60,0.16)" }} />
-          <div className="lantern-glow" style={{ bottom: -180, right: -140, width: 520, height: 520, background: "rgba(177,140,224,0.1)", animationDelay: "-3.4s" }} />
-          <div className="lantern-glow" style={{ top: "38%", right: "22%", width: 300, height: 300, background: "rgba(86,184,165,0.06)", animationDelay: "-5.2s" }} />
+          {/*
+            The three corner lights.
+            They were fixed rgba oranges and purples, so they stayed warm
+            whatever accent you chose — and there was no way to switch them
+            off, which made "Quiet" not actually quiet. They take the accent
+            now, and the Quiet background already turned them off — that guard
+            was here all along, so what could not be switched off was the
+            colour, not the light.
+          */}
+          <>
+              <div
+                className="lantern-glow"
+                style={{ top: -140, left: -120, width: 460, height: 460, background: "color-mix(in srgb, var(--color-ember) 16%, transparent)" }}
+              />
+              <div
+                className="lantern-glow"
+                style={{ bottom: -180, right: -140, width: 520, height: 520, background: "color-mix(in srgb, var(--color-ember) 10%, transparent)", animationDelay: "-3.4s" }}
+              />
+              <div
+                className="lantern-glow"
+                style={{ top: "38%", right: "22%", width: 300, height: 300, background: "color-mix(in srgb, var(--color-cream) 6%, transparent)", animationDelay: "-5.2s" }}
+              />
+          </>
         </>
       )}
 
@@ -1619,8 +1654,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
             disabled={isRunning || queueLen === 0}
             className={`btn-press flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold ${
               isRunning
-                ? "stripes-live text-[#241503]"
-                : `bg-ember text-[#241503] hover:bg-[#ffb654] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${queueLen > 0 ? "breathe" : ""}`
+                ? "stripes-live text-[var(--color-on-accent)]"
+                : `bg-ember text-[var(--color-on-accent)] hover:bg-[var(--color-accent-lift)] disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none ${queueLen > 0 ? "breathe" : ""}`
             }`}
           >
             <IPlay size={13} />

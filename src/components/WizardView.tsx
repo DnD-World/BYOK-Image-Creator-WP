@@ -24,10 +24,10 @@ const STEPS = [
 ];
 
 const card = "rounded-xl border border-line bg-panel/50 px-4 py-3.5";
-const field = "w-full rounded-lg border border-line bg-[#191310] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60";
+const field = "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5 text-[13px] text-cream placeholder:text-dust/60";
 
 function Explain({ children }: { children: ReactNode }) {
-  return <p className="mt-3 rounded-lg border border-line/70 bg-[#191310] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-parch">{children}</p>;
+  return <p className="mt-3 rounded-lg border border-line/70 bg-[var(--color-field)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-parch">{children}</p>;
 }
 
 function AccordionItem({
@@ -192,7 +192,7 @@ export default function WizardView({
                 >
                   <span
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[11px] ${
-                      done ? "border-moss/60 bg-moss/15 text-moss" : active ? "border-ember bg-ember text-[#241503]" : "border-line2 text-dust"
+                      done ? "border-moss/60 bg-moss/15 text-moss" : active ? "border-ember bg-ember text-[var(--color-on-accent)]" : "border-line2 text-dust"
                     }`}
                   >
                     {done ? <ICheck size={11} /> : i + 1}
@@ -266,7 +266,7 @@ export default function WizardView({
                 {KINDS.map((k) => {
                   const active = setup.kind === k.id;
                   return (
-                    <BorderGlow key={k.id} radius={13} glow={active ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.35)"} idle={active ? "rgba(177,140,224,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#241b26]" : "bg-[#241b14]"}>
+                    <BorderGlow key={k.id} radius={13} glow={active ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.35)"} idle={active ? "rgba(177,140,224,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#241b26]" : "bg-[var(--color-panel)]"}>
                       <button onClick={() => patch({ kind: k.id })} className="btn-press w-full p-4 text-left">
                         <span className="flex items-center justify-between gap-2">
                           <span className={`font-display text-[15px] tracking-wide ${active ? "text-potion" : "text-cream"}`}>{k.label}</span>
@@ -315,7 +315,7 @@ export default function WizardView({
                 {allStyles.map((s) => {
                   const active = setup.styleId === s.id;
                   return (
-                    <BorderGlow key={s.id} radius={13} glow={active ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.35)"} idle={active ? "rgba(242,163,60,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#2a1e12]" : "bg-[#241b14]"}>
+                    <BorderGlow key={s.id} radius={13} glow={active ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "rgba(242,163,60,0.35)"} idle={active ? "color-mix(in srgb, var(--color-ember) 50%, transparent)" : "var(--color-line)"} innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}>
                       <button onClick={() => patch({ styleId: s.id })} className="btn-press w-full p-4 text-left">
                         <span className="flex items-center gap-3">
                           <span className="flex shrink-0 overflow-hidden rounded-md border border-line">
@@ -350,7 +350,7 @@ export default function WizardView({
               </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 {/* simulated */}
-                <BorderGlow radius={13} glow={setup.model === "" && settings.provider === "simulated" ? "rgba(151,135,109,0.55)" : "rgba(151,135,109,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                <BorderGlow radius={13} glow={setup.model === "" && settings.provider === "simulated" ? "rgba(151,135,109,0.55)" : "rgba(151,135,109,0.3)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
                   <button onClick={() => patch({ model: "" })} className="btn-press w-full p-4 text-left">
                     <span className="flex items-center justify-between">
                       <span className="font-display text-[15px] text-cream">The practice forge</span>
@@ -360,7 +360,7 @@ export default function WizardView({
                   </button>
                 </BorderGlow>
                 {/* pollinations */}
-                <BorderGlow radius={13} glow={setup.model === "flux" || setup.model === "turbo" ? "rgba(86,184,165,0.55)" : "rgba(86,184,165,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                <BorderGlow radius={13} glow={setup.model === "flux" || setup.model === "turbo" ? "rgba(86,184,165,0.55)" : "rgba(86,184,165,0.3)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
                   <div className="p-4">
                     <span className="flex items-center justify-between">
                       <span className="font-display text-[15px] text-cream">Free art (FLUX)</span>
@@ -377,7 +377,7 @@ export default function WizardView({
                   </div>
                 </BorderGlow>
                 {/* google */}
-                <BorderGlow radius={13} glow={chosenModel?.engine === "gemini" ? "rgba(242,163,60,0.6)" : "rgba(242,163,60,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                <BorderGlow radius={13} glow={chosenModel?.engine === "gemini" ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "rgba(242,163,60,0.3)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
                   <div className="p-4">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-display text-[15px] text-cream">Google Imagen</span>
@@ -411,7 +411,7 @@ export default function WizardView({
                   </div>
                 </BorderGlow>
                 {/* openai compatible */}
-                <BorderGlow radius={13} glow={chosenModel?.engine === "openai" ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.3)"} idle="#3e2f21" innerClassName="bg-[#241b14]">
+                <BorderGlow radius={13} glow={chosenModel?.engine === "openai" ? "rgba(177,140,224,0.6)" : "rgba(177,140,224,0.3)"} idle="var(--color-line)" innerClassName="bg-[var(--color-panel)]">
                   <div className="p-4">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-display text-[15px] text-cream">Any OpenAI-style service</span>
@@ -461,7 +461,7 @@ export default function WizardView({
                   const active = setup.aspect === a;
                   const dims = a === "per-category" ? null : ASPECTS[a as AspectKey];
                   return (
-                    <BorderGlow key={a} radius={13} glow={active ? "rgba(86,184,165,0.6)" : "rgba(86,184,165,0.3)"} idle={active ? "rgba(86,184,165,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#1d2422]" : "bg-[#241b14]"}>
+                    <BorderGlow key={a} radius={13} glow={active ? "rgba(86,184,165,0.6)" : "rgba(86,184,165,0.3)"} idle={active ? "rgba(86,184,165,0.5)" : "#3e2f21"} innerClassName={active ? "bg-[#1d2422]" : "bg-[var(--color-panel)]"}>
                       <button onClick={() => patch({ aspect: a })} className="btn-press flex w-full flex-col items-center p-4">
                         <span
                           className={`rounded-md border-2 ${active ? "border-lagoon" : "border-line2"}`}
@@ -497,7 +497,7 @@ export default function WizardView({
                 <span className="font-mono text-cream">shops/ items/ events/ npcs/</span>.
               </p>
               <div className="mt-5">
-                <BorderGlow radius={13} glow={setup.linkFolder ? "rgba(140,181,111,0.55)" : "rgba(140,181,111,0.3)"} idle={setup.linkFolder ? "rgba(140,181,111,0.45)" : "#3e2f21"} innerClassName={setup.linkFolder ? "bg-[#1f241b]" : "bg-[#241b14]"}>
+                <BorderGlow radius={13} glow={setup.linkFolder ? "rgba(140,181,111,0.55)" : "rgba(140,181,111,0.3)"} idle={setup.linkFolder ? "rgba(140,181,111,0.45)" : "#3e2f21"} innerClassName={setup.linkFolder ? "bg-[#1f241b]" : "bg-[var(--color-panel)]"}>
                   <button onClick={() => patch({ linkFolder: !setup.linkFolder })} className="btn-press w-full p-4 text-left">
                     <span className="flex items-center gap-3">
                       <IFolder size={20} className={setup.linkFolder ? "text-moss" : "text-dust"} />
@@ -535,7 +535,7 @@ export default function WizardView({
               <p className="text-[15px] leading-relaxed text-parch">Two small choices. You can skip both.</p>
               <div className={card}>
                 <button onClick={() => setWantSave(!wantSave)} className="btn-press flex w-full items-center gap-3 text-left">
-                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${wantSave ? "border-ember bg-ember text-[#241503]" : "border-line2"}`}>
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${wantSave ? "border-ember bg-ember text-[var(--color-on-accent)]" : "border-line2"}`}>
                     {wantSave && <ICheck size={11} />}
                   </span>
                   <span className="flex-1">
@@ -549,7 +549,7 @@ export default function WizardView({
               </div>
               <div className={card}>
                 <button onClick={() => patch({ runAfter: !setup.runAfter })} className="btn-press flex w-full items-center gap-3 text-left">
-                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${setup.runAfter ? "border-ember bg-ember text-[#241503]" : "border-line2"}`}>
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${setup.runAfter ? "border-ember bg-ember text-[var(--color-on-accent)]" : "border-line2"}`}>
                     {setup.runAfter && <ICheck size={11} />}
                   </span>
                   <span className="flex-1">

@@ -91,7 +91,7 @@ export function PillNav({
   const still = shouldSkipMotion(level);
 
   return (
-    <div ref={wrapRef} className="relative flex items-center gap-0.5 rounded-xl border border-line bg-[#191310]/70 p-1">
+    <div ref={wrapRef} className="relative flex items-center gap-0.5 rounded-xl border border-line bg-[var(--color-field)]/70 p-1">
       {box && (
         <span
           aria-hidden

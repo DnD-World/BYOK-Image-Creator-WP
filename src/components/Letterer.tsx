@@ -16,7 +16,7 @@ import { downloadBlob } from "../lib/output";
 import { Btn, IX, ITrash } from "./ui";
 
 const field =
-  "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+  "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 const label = "mb-1 block font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase";
 
 const HANDLE = 9;
@@ -110,8 +110,8 @@ export default function Letterer({
       ctx.stroke();
       ctx.setLineDash([]);
       px.forEach((p) => {
-        ctx.fillStyle = "#f2a33c";
-        ctx.strokeStyle = "#241503";
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--color-ember").trim() || "#f2a33c";
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--color-on-accent").trim() || "#241503";
         ctx.beginPath();
         ctx.rect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
         ctx.fill();
@@ -286,7 +286,7 @@ export default function Letterer({
               </Btn>
             </div>
             {note && (
-              <p className="mt-2 rounded-lg border border-line bg-[#191310] px-3 py-2 text-[11.5px] text-parch">{note}</p>
+              <p className="mt-2 rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[11.5px] text-parch">{note}</p>
             )}
           </div>
 
@@ -299,7 +299,7 @@ export default function Letterer({
                     key={l.id}
                     onClick={() => setActiveId(l.id)}
                     className={`btn-press rounded-md px-2 py-1 font-mono text-[10.5px] ${
-                      l.id === active?.id ? "bg-ember text-[#241503]" : "border border-line text-parch"
+                      l.id === active?.id ? "bg-ember text-[var(--color-on-accent)]" : "border border-line text-parch"
                     }`}
                   >
                     {l.text.split("\n")[0].slice(0, 12) || `layer ${i + 1}`}
@@ -370,7 +370,7 @@ export default function Letterer({
                       type="color"
                       value={active.color}
                       onChange={(e) => patch({ color: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-line bg-[#191310]"
+                      className="h-9 w-full rounded-lg border border-line bg-[var(--color-field)]"
                     />
                   </div>
                   <div>
@@ -379,7 +379,7 @@ export default function Letterer({
                       type="color"
                       value={active.strokeColor}
                       onChange={(e) => patch({ strokeColor: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-line bg-[#191310]"
+                      className="h-9 w-full rounded-lg border border-line bg-[var(--color-field)]"
                     />
                   </div>
                 </div>
@@ -404,7 +404,7 @@ export default function Letterer({
                       step={step}
                       value={Number(active[key])}
                       onChange={(e) => patch({ [key]: Number(e.target.value) } as Partial<TextLayer>)}
-                      className="h-1.5 w-full accent-[#f2a33c]"
+                      className="h-1.5 w-full accent-[var(--color-ember)]"
                     />
                   </div>
                 ))}
@@ -415,7 +415,7 @@ export default function Letterer({
                       type="checkbox"
                       checked={active.uppercase}
                       onChange={(e) => patch({ uppercase: e.target.checked })}
-                      className="h-4 w-4 accent-[#f2a33c]"
+                      className="h-4 w-4 accent-[var(--color-ember)]"
                     />
                     CAPITALS
                   </label>
@@ -424,7 +424,7 @@ export default function Letterer({
                       type="checkbox"
                       checked={active.italic}
                       onChange={(e) => patch({ italic: e.target.checked })}
-                      className="h-4 w-4 accent-[#f2a33c]"
+                      className="h-4 w-4 accent-[var(--color-ember)]"
                     />
                     italic
                   </label>
@@ -433,7 +433,7 @@ export default function Letterer({
                       type="checkbox"
                       checked={active.weight >= 700}
                       onChange={(e) => patch({ weight: e.target.checked ? 700 : 400 })}
-                      className="h-4 w-4 accent-[#f2a33c]"
+                      className="h-4 w-4 accent-[var(--color-ember)]"
                     />
                     bold
                   </label>

@@ -130,7 +130,7 @@ export default function DocsView({
           <div className="mt-4 overflow-x-auto rounded-xl border border-line">
             <table className="w-full min-w-[560px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-line bg-[#191310] font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
+                <tr className="border-b border-line bg-[var(--color-field)] font-mono text-[9.5px] tracking-[0.18em] text-dust uppercase">
                   <th className="px-3.5 py-2.5 font-medium">model id</th>
                   <th className="px-3.5 py-2.5 font-medium">engine</th>
                   <th className="px-3.5 py-2.5 font-medium">allowance</th>

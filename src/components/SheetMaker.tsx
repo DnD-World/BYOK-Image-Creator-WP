@@ -21,7 +21,7 @@ import { downloadBlob } from "../lib/output";
 import { Btn, IX } from "./ui";
 
 const field =
-  "w-full rounded-lg border border-line bg-[#191310] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
+  "w-full rounded-lg border border-line bg-[var(--color-field)] px-3 py-2 text-[13px] text-cream placeholder:text-dust/60";
 const label = "mb-1.5 block font-mono text-[10px] tracking-[0.2em] text-dust uppercase";
 
 type Method = "from-reference" | "one-shot";
@@ -267,7 +267,7 @@ export default function SheetMaker({
                     key={d.kind}
                     onClick={() => setDef(d)}
                     className={`btn-press rounded-lg border p-3 text-left ${
-                      d.kind === def.kind ? "border-ember/60 bg-ember/10" : "border-line bg-[#191310]"
+                      d.kind === def.kind ? "border-ember/60 bg-ember/10" : "border-line bg-[var(--color-field)]"
                     }`}
                   >
                     <span className="block text-[13px] font-semibold text-cream">{d.label}</span>
@@ -296,7 +296,7 @@ export default function SheetMaker({
                   onClick={() => setMethod("from-reference")}
                   disabled={!canReference}
                   className={`btn-press rounded-lg border p-3 text-left disabled:opacity-40 ${
-                    method === "from-reference" ? "border-ember/60 bg-ember/10" : "border-line bg-[#191310]"
+                    method === "from-reference" ? "border-ember/60 bg-ember/10" : "border-line bg-[var(--color-field)]"
                   }`}
                 >
                   <span className="block text-[13px] font-semibold text-cream">From a reference</span>
@@ -308,7 +308,7 @@ export default function SheetMaker({
                 <button
                   onClick={() => setMethod("one-shot")}
                   className={`btn-press rounded-lg border p-3 text-left ${
-                    method === "one-shot" ? "border-ember/60 bg-ember/10" : "border-line bg-[#191310]"
+                    method === "one-shot" ? "border-ember/60 bg-ember/10" : "border-line bg-[var(--color-field)]"
                   }`}
                 >
                   <span className="block text-[13px] font-semibold text-cream">All in one picture</span>
@@ -326,7 +326,7 @@ export default function SheetMaker({
               )}
             </div>
 
-            <div className="rounded-lg border border-line bg-[#191310] px-3 py-2.5">
+            <div className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-2.5">
               <p className="text-[12px] text-parch">
                 {shots} generation{shots === 1 ? "" : "s"} ·{" "}
                 <span className={cost.total > 0 ? "text-ember" : "text-moss"}>
@@ -403,7 +403,7 @@ export default function SheetMaker({
                   <Btn onClick={saveFrames}>Save each frame</Btn>
                 </div>
 
-                <div className="rounded-lg border border-line bg-[#191310] p-3">
+                <div className="rounded-lg border border-line bg-[var(--color-field)] p-3">
                   <p className={label}>play it</p>
                   <div className="flex flex-wrap gap-2">
                     {!playing ? (
@@ -452,7 +452,7 @@ export default function SheetMaker({
             )}
 
             {!frames.length && !sheetUrl && (
-              <p className="rounded-lg border border-line bg-[#191310] px-3 py-6 text-center text-[12px] text-dust">
+              <p className="rounded-lg border border-line bg-[var(--color-field)] px-3 py-6 text-center text-[12px] text-dust">
                 Nothing yet. Describe a character and press “Make the sheet”.
               </p>
             )}
