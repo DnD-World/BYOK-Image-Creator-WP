@@ -106,6 +106,17 @@ export interface ForgeSettings {
    */
   vision: { base: string; key: string; model: string };
   /**
+   * The endpoints and keys the three text jobs draw from.
+   *
+   * The three engines each carried their own address and key, which meant
+   * typing the same Mistral key three times and no way to see, at a glance,
+   * what you had. They are entered once here; each engine then picks a model
+   * and takes that provider's address and key with it. The engines still hold
+   * their own copy, because that is what the request needs and it keeps them
+   * working if a provider is later removed.
+   */
+  textProviders: { id: string; label: string; base: string; key: string }[];
+  /**
    * Engines switched off by hand. A provider having a bad month should not
    * cost you your key setup, and should not cost you thirty seconds per row
    * proving it is still broken.
@@ -139,6 +150,33 @@ export interface ForgeSettings {
   customStyles: { id: string; name: string; block: string }[];
 }
 
+/** Build a provider list from whatever the three engines were already using. */
+function seedProviders(s: Record<string, unknown>): ForgeSettings["textProviders"] {
+  const out: ForgeSettings["textProviders"] = [];
+  const seen = new Set<string>();
+  for (const [job, label] of [
+    ["scribe", "writing"],
+    ["coder", "code"],
+    ["vision", "vision"],
+  ] as const) {
+    const e = s[job] as { base?: string; key?: string } | undefined;
+    const base = (e?.base ?? "").trim();
+    const key = (e?.key ?? "").trim();
+    if (!base || !key) continue;
+    const fingerprint = `${base}|${key}`;
+    if (seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    let host = base;
+    try {
+      host = new URL(base).host.replace(/^api\./, "");
+    } catch {
+      /* keep the raw address as the name */
+    }
+    out.push({ id: `p${out.length + 1}`, label: host || label, base, key });
+  }
+  return out;
+}
+
 export const DEFAULT_SETTINGS: ForgeSettings = {
   provider: "simulated",
   pollinationsModel: "flux",
@@ -166,6 +204,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   scribe: { base: "https://api.openai.com/v1", key: "", model: "gpt-4o-mini" },
   coder: { base: "https://api.mistral.ai/v1", key: "", model: "codestral-latest" },
   vision: { base: "https://api.mistral.ai/v1", key: "", model: "mistral-medium-latest" },
+  textProviders: [],
   pausedEngines: [],
   cooldowns: {},
   usage: {},
@@ -204,6 +243,10 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     scribe: { ...DEFAULT_SETTINGS.scribe, ...(s.scribe ?? {}) },
     coder: { ...DEFAULT_SETTINGS.coder, ...(s.coder ?? {}) },
     vision: { ...DEFAULT_SETTINGS.vision, ...(s.vision ?? {}) },
+    // Settings saved before the providers card existed have keys on the three
+    // engines and no provider list. Seed it from them, deduplicated, so an
+    // existing setup arrives already filled in rather than looking empty.
+    textProviders: Array.isArray(s.textProviders) && s.textProviders.length > 0 ? s.textProviders : seedProviders(s),
     pausedEngines: Array.isArray(s.pausedEngines) ? s.pausedEngines : [],
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },

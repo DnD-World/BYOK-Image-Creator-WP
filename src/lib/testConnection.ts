@@ -277,6 +277,35 @@ async function testChat(engine: ForgeSettings["scribe"], who: string): Promise<T
  * block, four pixels — and ask what colour it is. It costs a fraction of a
  * cent at worst, and it proves the whole chain end to end.
  */
+/**
+ * Can this model write CODE, rather than merely answer?
+ *
+ * A chat model will happily describe an SVG in prose. That looks like success
+ * and produces a broken vector later, which is a far more annoying way to find
+ * out. So we ask for the smallest real thing and check the shape of the reply.
+ */
+export async function testCode(engine: { base: string; key: string; model: string }): Promise<TestResult> {
+  if (!engine.key.trim()) return bad("No key for the code engine yet.");
+  let reply: string;
+  try {
+    reply = await scribeChat(
+      engine,
+      "You write code and nothing else. No prose, no explanation, no code fences.",
+      "Return an SVG of a single red circle on a 24x24 canvas."
+    );
+  } catch (e) {
+    return bad(capitalise((e as { message?: string })?.message ?? "it did not answer"));
+  }
+  const looksLikeSvg = /<svg[\s\S]*<\/svg>/i.test(reply);
+  if (looksLikeSvg) return ok(`${engine.model || "The model"} writes code.`, "It returned a usable SVG.", false);
+  return {
+    ok: false,
+    message: `${engine.model || "The model"} answered, but not with code.`,
+    detail: `It replied: "${reply.trim().slice(0, 90)}". A model that describes an SVG instead of writing one produces broken vectors later. Pick a model built for code — Codestral is free.`,
+    free: false,
+  };
+}
+
 export async function testVision(engine: VisionEngine): Promise<TestResult> {
   if (!engine.base.trim()) return bad("No address set for the vision engine.");
   // A 64x64 solid red PNG, 136 bytes, checked byte for byte by a test below.
@@ -331,7 +360,7 @@ export async function testConnection(target: TestTarget, s: ForgeSettings): Prom
     case "scribe":
       return testChat(s.scribe, "your text model");
     case "coder":
-      return testChat(s.coder, "your code model");
+      return testCode(s.coder);
     case "vision":
       return testVision(s.vision);
     default:
