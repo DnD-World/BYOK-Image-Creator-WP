@@ -22,6 +22,33 @@ const cssColor = (name: string, fallback: string): string => {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 };
 
+/**
+ * Turn any CSS colour into one canvas will accept.
+ *
+ * addColorStop understands hex, rgb() and named colours and nothing else. Hand
+ * it `var(--x)` or `color-mix(...)` and it throws a SyntaxError, which takes
+ * the entire draw loop with it — the dot field simply stopped, with no visible
+ * cause but a console message nobody was looking at.
+ *
+ * Rather than forbidding those values, resolve them: the browser already knows
+ * how, so we let it compute the colour on a throwaway element and read it
+ * back. Anything already usable passes through untouched.
+ */
+const canvasColor = (value: string, fallback = "rgba(0,0,0,0)"): string => {
+  if (!value) return fallback;
+  if (!value.includes("var(") && !value.includes("color-mix(")) return value;
+  if (typeof document === "undefined") return fallback;
+  const probe = document.createElement("span");
+  probe.style.color = value;
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  // A value the browser could not parse either comes back as the initial
+  // colour, which would be a lie — so fall back rather than draw black.
+  return resolved && resolved !== "rgb(0, 0, 0)" ? resolved : fallback;
+};
+
 export function DotField({
   className = "",
   dotRadius = 1.25,
@@ -70,8 +97,8 @@ export function DotField({
       const cols = Math.ceil(w / p.dotSpacing) + 1;
       const rows = Math.ceil(h / p.dotSpacing) + 1;
       const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, p.gradientFrom);
-      grad.addColorStop(1, p.gradientTo);
+      grad.addColorStop(0, canvasColor(p.gradientFrom));
+      grad.addColorStop(1, canvasColor(p.gradientTo));
       ctx.fillStyle = grad;
 
       const R2 = p.cursorRadius * p.cursorRadius;
@@ -111,7 +138,7 @@ export function DotField({
 
       if (mouse.x > -999 && !reduced) {
         const rg = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, p.glowRadius);
-        rg.addColorStop(0, p.glowColor);
+        rg.addColorStop(0, canvasColor(p.glowColor));
         rg.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = rg;
         ctx.fillRect(mouse.x - p.glowRadius, mouse.y - p.glowRadius, p.glowRadius * 2, p.glowRadius * 2);
