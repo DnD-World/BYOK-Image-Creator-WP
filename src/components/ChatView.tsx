@@ -17,7 +17,7 @@ import type { ForgeSettings } from "../lib/providers";
 import { scribeChat } from "../lib/providers";
 import { CHAT_SYSTEM } from "../lib/appFacts";
 import { listChatModels } from "../lib/visionEngine";
-import { modelListForPrompt, parseReply, styleListForPrompt, type ChatPlan } from "../lib/chatPlan";
+import { manifestDigest, modelListForPrompt, parseReply, styleListForPrompt, type ChatPlan, type EditPreview, type RowEdit } from "../lib/chatPlan";
 import { styleById } from "../lib/styleCatalogue";
 import { MODELS } from "../lib/engines.mjs";
 import type { ManifestRow, Toast } from "../types";
@@ -47,6 +47,7 @@ export default function ChatView({
   motion,
   onForge,
   onAddRows,
+  onEditRows,
   onOpenSettings,
   pushToast,
 }: {
@@ -57,6 +58,8 @@ export default function ChatView({
   onForge: (plan: ChatPlan) => Promise<number | null>;
   /** puts a whole list into the manifest without running it; returns how many */
   onAddRows: (plans: ChatPlan[]) => Promise<number>;
+  /** applies changes to rows that already exist; returns how many changed */
+  onEditRows: (edits: RowEdit[]) => Promise<number>;
   onOpenSettings: () => void;
   pushToast: (kind: Toast["kind"], msg: string) => void;
 }) {
@@ -181,19 +184,32 @@ export default function ChatView({
         const transcript = history
           .map((t) => `${t.who === "you" ? "User" : "You"}: ${t.text}`)
           .join("\n\n");
+        // The manifest goes with the request, so the chat can change rows
+        // that already exist rather than only inventing new ones.
         const reply = await scribeChat(
           { ...settings.scribe, model: chatModel || settings.scribe.model },
-          CHAT_SYSTEM(styleListForPrompt(), modelListForPrompt()),
+          `${CHAT_SYSTEM(styleListForPrompt(), modelListForPrompt())}
+
+THE MANIFEST RIGHT NOW
+${manifestDigest(rows)}`,
           transcript
         );
-        const parsed = parseReply(reply, settings);
+        const parsed = parseReply(reply, settings, rows);
         // An explicit choice in the dropdown beats whatever the chat picked.
         const forced = (p: ChatPlan): ChatPlan => (imageModel ? { ...p, model: imageModel } : p);
         const plan = parsed.plan ? forced(parsed.plan) : null;
-        const rows = parsed.rows ? parsed.rows.map(forced) : null;
+        const newRows = parsed.rows ? parsed.rows.map(forced) : null;
         writeTurns((prev) => [
           ...prev,
-          { who: "forge", text: parsed.say || "…", plan, rows, corrections: parsed.corrections },
+          {
+            who: "forge",
+            text: parsed.say || "…",
+            plan,
+            rows: newRows,
+            edits: parsed.edits,
+            previews: parsed.previews,
+            corrections: parsed.corrections,
+          },
         ]);
       } catch (e) {
         const why = (e as { message?: string })?.message ?? "it did not answer";
@@ -205,7 +221,7 @@ export default function ChatView({
         setBusy(false);
       }
     },
-    [busy, settings, turns, writeTurns, chatModel, imageModel]
+    [busy, settings, turns, writeTurns, chatModel, imageModel, rows]
   );
 
   const forge = useCallback(
@@ -223,6 +239,22 @@ export default function ChatView({
       }
     },
     [onForge, pushToast, writeTurns]
+  );
+
+  const applyEdits = useCallback(
+    async (edits: RowEdit[], turnIndex: number) => {
+      setForging(true);
+      try {
+        const n = await onEditRows(edits);
+        writeTurns((prev) => prev.map((t, i) => (i === turnIndex ? { ...t, editsApplied: true } : t)));
+        pushToast("ok", `${n} row${n === 1 ? "" : "s"} changed.`);
+      } catch (e) {
+        pushToast("err", (e as { message?: string })?.message ?? "could not change those rows");
+      } finally {
+        setForging(false);
+      }
+    },
+    [onEditRows, pushToast, writeTurns]
   );
 
   const addMany = useCallback(
@@ -390,6 +422,15 @@ export default function ChatView({
                   />
                 )}
 
+                {t.previews && t.previews.length > 0 && (
+                  <EditCard
+                    previews={t.previews}
+                    applied={t.editsApplied}
+                    busy={forging}
+                    onApply={() => void applyEdits(t.edits!, i)}
+                  />
+                )}
+
                 {t.rows && t.rows.length > 0 && (
                   <BatchCard
                     rows={t.rows}
@@ -470,6 +511,60 @@ export default function ChatView({
         </div>
       </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What would change, before it changes.
+ *
+ * The Scribe used to do this one row at a time behind a button whose label
+ * was the word "scribe". The important part is not that it is now in the chat
+ * — it is that a rewrite of eleven prompts is shown as eleven before-and-
+ * afters and applied on a button, rather than happening and being discovered.
+ */
+function EditCard({
+  previews,
+  applied,
+  busy,
+  onApply,
+}: {
+  previews: EditPreview[];
+  applied?: boolean;
+  busy: boolean;
+  onApply: () => void;
+}) {
+  const total = previews.reduce((n, p) => n + p.changes.length, 0);
+  return (
+    <div className="mt-2.5 rounded-xl border border-potion/40 bg-potion/5 p-3">
+      <p className="text-[12.5px] text-cream">
+        {total} change{total === 1 ? "" : "s"} across {previews.length} row{previews.length === 1 ? "" : "s"}
+      </p>
+      <div className="mt-2 max-h-72 space-y-2 overflow-y-auto">
+        {previews.map((p) => (
+          <div key={p.id} className="rounded-lg border border-line bg-[#191310]/70 p-2">
+            <p className="font-mono text-[10.5px] text-dust">
+              #{p.id} {p.filename}
+            </p>
+            {p.changes.map((c) => (
+              <div key={c.field} className="mt-1">
+                <p className="font-mono text-[9.5px] tracking-wide text-dust uppercase">{c.field}</p>
+                <p className="text-[11.5px] leading-snug text-rust/90 line-through decoration-rust/40">
+                  {c.from || "(empty)"}
+                </p>
+                <p className="text-[11.5px] leading-snug text-moss">{c.to}</p>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      {applied ? (
+        <p className="mt-2 font-mono text-[10.5px] text-moss">✓ applied to the manifest</p>
+      ) : (
+        <Btn className="mt-2.5" disabled={busy} onClick={onApply}>
+          {busy ? "changing…" : `Apply ${total === 1 ? "this change" : "these changes"}`}
+        </Btn>
+      )}
     </div>
   );
 }

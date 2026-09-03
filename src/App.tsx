@@ -80,7 +80,7 @@ import GifMaker from "./components/GifMaker";
 import UpdateReadyDialog from "./components/UpdateReadyDialog";
 import ChatView from "./components/ChatView";
 import { CardPanel } from "./components/nav";
-import { filenameFor, type ChatPlan } from "./lib/chatPlan";
+import { filenameFor, type ChatPlan, type RowEdit } from "./lib/chatPlan";
 import { CountUp, type MotionLevel } from "./components/motion";
 import Letterer from "./components/Letterer";
 import SheetMaker from "./components/SheetMaker";
@@ -1231,6 +1231,35 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
     return made.length;
   }, [pushLog]);
 
+  /**
+   * Apply the chat's changes to rows that already exist.
+   *
+   * Only the fields the chat is allowed to touch are copied across, and they
+   * are copied one by one rather than spread — a spread would let an unexpected
+   * key through and quietly rewrite a status or an id.
+   */
+  const editRowsFromChat = useCallback(async (edits: RowEdit[]): Promise<number> => {
+    let changed = 0;
+    setRows((prev) =>
+      prev.map((r) => {
+        const e = edits.find((x) => x.id === r.id);
+        if (!e) return r;
+        const next: ManifestRow = { ...r };
+        if (e.prompt !== undefined) next.prompt = e.prompt;
+        if (e.negative_prompt !== undefined) next.negative_prompt = e.negative_prompt;
+        if (e.note !== undefined) next.note = e.note;
+        if (e.filename !== undefined) next.filename = e.filename;
+        if (e.style !== undefined) next.style = e.style;
+        if (e.model !== undefined) next.model = e.model;
+        if (e.aspect !== undefined) next.aspect_ratio = e.aspect;
+        changed += 1;
+        return next;
+      })
+    );
+    pushLog(`✎ ${edits.length} row${edits.length === 1 ? "" : "s"} rewritten by the chat`, "ok");
+    return edits.length;
+  }, [pushLog]);
+
   const checkForUpdate = useCallback(async () => {
     // The app knows where it came from. Asking the user to type the owner and
     // repo before it would even look was a pointless gate — their setting
@@ -1810,6 +1839,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               motion={motionLevel}
               onForge={forgeFromChat}
               onAddRows={addRowsFromChat}
+              onEditRows={editRowsFromChat}
               onOpenSettings={() => nav("settings", "text")}
               pushToast={pushToast}
             />

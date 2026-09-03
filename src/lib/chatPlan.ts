@@ -31,6 +31,10 @@ export interface ParsedReply {
   plan: ChatPlan | null;
   /** a whole list of pictures, when asked for many at once */
   rows: ChatPlan[] | null;
+  /** changes to rows that already exist, not yet applied */
+  edits: RowEdit[] | null;
+  /** what those changes would do, for showing before applying */
+  previews: EditPreview[] | null;
   /** anything we had to correct, in plain words, for the user to see */
   corrections: string[];
 }
@@ -99,8 +103,30 @@ function validate(raw: Record<string, unknown>, settings: ForgeSettings, correct
   return { style, model, prompt, aspect };
 }
 
-export function parseReply(reply: string, settings: ForgeSettings): ParsedReply {
+export function parseReply(
+  reply: string,
+  settings: ForgeSettings,
+  rows: Parameters<typeof parseEdits>[1] = []
+): ParsedReply {
   const corrections: string[] = [];
+
+  // EDIT first: changes to rows that already exist. Nothing is applied here —
+  // this only works out what WOULD change, so it can be shown before it is.
+  const edited = reply.match(/^EDIT:\s*(\[[\s\S]*?\])\s*$/m);
+  if (edited) {
+    const say = reply.slice(0, edited.index).trim();
+    let list: unknown;
+    try {
+      list = JSON.parse(edited[1]);
+    } catch {
+      return { say, plan: null, rows: null, edits: null, previews: null, corrections: ["It tried to change some rows and garbled it. Ask again."] };
+    }
+    const { edits, previews } = parseEdits(list, rows, corrections);
+    if (edits.length === 0) {
+      return { say, plan: null, rows: null, edits: null, previews: null, corrections: corrections.length ? corrections : ["Nothing would actually change."] };
+    }
+    return { say, plan: null, rows: null, edits, previews, corrections };
+  }
 
   // ROWS first: a list of pictures for the manifest. This is the bulk job the
   // Scribe used to do behind a button nobody could find.
@@ -111,22 +137,22 @@ export function parseReply(reply: string, settings: ForgeSettings): ParsedReply 
     try {
       list = JSON.parse(many[1]);
     } catch {
-      return { say, plan: null, rows: null, corrections: ["It tried to write a list of pictures and garbled it. Ask again."] };
+      return { say, plan: null, rows: null, edits: null, previews: null, corrections: ["It tried to write a list of pictures and garbled it. Ask again."] };
     }
     if (!Array.isArray(list) || list.length === 0) {
-      return { say, plan: null, rows: null, corrections: ["It returned an empty list, so nothing was added."] };
+      return { say, plan: null, rows: null, edits: null, previews: null, corrections: ["It returned an empty list, so nothing was added."] };
     }
     const rows = list
       .map((r) => validate((r ?? {}) as Record<string, unknown>, settings, corrections))
       .filter((r): r is ChatPlan => r !== null);
     const dropped = list.length - rows.length;
     if (dropped > 0) corrections.push(`${dropped} of ${list.length} had no prompt and were skipped.`);
-    return { say, plan: null, rows: rows.length > 0 ? rows : null, corrections };
+    return { say, plan: null, rows: rows.length > 0 ? rows : null, edits: null, previews: null, corrections };
   }
 
   const line = reply.match(/^FORGE:\s*(\{[\s\S]*?\})\s*$/m);
   const say = (line ? reply.slice(0, line.index) : reply).trim();
-  if (!line) return { say, plan: null, rows: null, corrections: [] };
+  if (!line) return { say, plan: null, rows: null, edits: null, previews: null, corrections: [] };
 
   let raw: Record<string, unknown>;
   try {
@@ -134,12 +160,12 @@ export function parseReply(reply: string, settings: ForgeSettings): ParsedReply 
   } catch {
     // It meant to propose something and mangled the JSON. Better to keep the
     // words and drop the plan than to guess at what it intended.
-    return { say, plan: null, rows: null, corrections: ["It tried to suggest a picture but garbled it. Ask again."] };
+    return { say, plan: null, rows: null, edits: null, previews: null, corrections: ["It tried to suggest a picture but garbled it. Ask again."] };
   }
 
   const plan = validate(raw, settings, corrections);
-  if (!plan) return { say, plan: null, rows: null, corrections: ["It suggested a picture with no prompt, so nothing was made."] };
-  return { say, plan, rows: null, corrections };
+  if (!plan) return { say, plan: null, rows: null, edits: null, previews: null, corrections: ["It suggested a picture with no prompt, so nothing was made."] };
+  return { say, plan, rows: null, edits: null, previews: null, corrections };
 }
 
 /** A filename that obeys the seven rules, derived from what was asked for. */
@@ -157,4 +183,118 @@ export function filenameFor(prompt: string, category = "image", taken: string[] 
   let n = 2;
   while (taken.includes(`${category}_${stem}_${n}.png`)) n++;
   return `${category}_${stem}_${n}.png`;
+}
+
+/* ---------------- editing rows that already exist ---------------- */
+
+/**
+ * A change to a row already in the manifest.
+ *
+ * This is the Scribe's real job — improving what is there — moved somewhere
+ * people can find it. Only fields a person would sensibly ask to change are
+ * allowed: nothing here can alter a row's status, its error, when it was made,
+ * or its id. A chat rewriting history is not a feature.
+ */
+export interface RowEdit {
+  id: number;
+  prompt?: string;
+  negative_prompt?: string;
+  note?: string;
+  filename?: string;
+  style?: string;
+  model?: string;
+  aspect?: AspectKey;
+}
+
+/** What a row looked like before, so a change can be shown rather than assumed. */
+export interface EditPreview {
+  id: number;
+  filename: string;
+  changes: { field: string; from: string; to: string }[];
+}
+
+const EDITABLE = ["prompt", "negative_prompt", "note", "filename", "style", "model", "aspect"] as const;
+
+/**
+ * A compact view of the manifest for the chat to work from.
+ *
+ * Capped hard. The whole thing goes into every request, so a 400-row manifest
+ * would cost more per message than the pictures do — and a model given 400
+ * rows picks worse than one given the 60 that matter.
+ */
+export function manifestDigest(
+  rows: { id: number; filename: string; prompt: string; style: string; model: string; status: string }[],
+  max = 60
+): string {
+  if (rows.length === 0) return "The manifest is empty.";
+  const shown = rows.slice(0, max);
+  const lines = shown.map(
+    (r) =>
+      `#${r.id} ${r.filename} [${r.status}] style=${r.style || "-"} model=${r.model || "default"} :: ${r.prompt.slice(0, 90)}`
+  );
+  const more = rows.length > max ? `\n(and ${rows.length - max} more, not listed)` : "";
+  return `${rows.length} rows in the manifest:\n${lines.join("\n")}${more}`;
+}
+
+/**
+ * Read an EDIT: block and check every change against the real row.
+ *
+ * Unknown ids are dropped rather than guessed at — "row 12" when there is no
+ * row 12 must not quietly become row 2.
+ */
+export function parseEdits(
+  raw: unknown,
+  rows: { id: number; filename: string; prompt: string; style: string; model: string; aspect_ratio: string; note?: string; negative_prompt?: string }[],
+  corrections: string[]
+): { edits: RowEdit[]; previews: EditPreview[] } {
+  const edits: RowEdit[] = [];
+  const previews: EditPreview[] = [];
+  if (!Array.isArray(raw)) return { edits, previews };
+
+  for (const item of raw) {
+    const o = (item ?? {}) as Record<string, unknown>;
+    const id = Number(o.id);
+    const row = rows.find((r) => r.id === id);
+    if (!row) {
+      corrections.push(`There is no row #${o.id}, so that change was skipped.`);
+      continue;
+    }
+
+    const edit: RowEdit = { id };
+    const changes: EditPreview["changes"] = [];
+
+    for (const field of EDITABLE) {
+      if (!(field in o)) continue;
+      const next = String(o[field] ?? "").trim();
+      if (!next) continue;
+
+      if (field === "style" && !styleById(next)) {
+        corrections.push(`There is no style called "${next}", so row #${id} kept its own.`);
+        continue;
+      }
+      if (field === "model" && !liveModelIds().has(next)) {
+        corrections.push(`There is no model called "${next}", so row #${id} kept its own.`);
+        continue;
+      }
+      if (field === "aspect" && !ASPECTS.includes(next as AspectKey)) {
+        corrections.push(`"${next}" is not a shape the forge knows, so row #${id} kept its own.`);
+        continue;
+      }
+
+      const current =
+        field === "aspect"
+          ? row.aspect_ratio
+          : String((row as unknown as Record<string, unknown>)[field] ?? "");
+      if (current === next) continue;
+
+      (edit as unknown as Record<string, unknown>)[field] = next;
+      changes.push({ field, from: current, to: next });
+    }
+
+    if (changes.length > 0) {
+      edits.push(edit);
+      previews.push({ id, filename: row.filename, changes });
+    }
+  }
+  return { edits, previews };
 }

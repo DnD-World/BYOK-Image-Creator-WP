@@ -11,7 +11,7 @@
  * happens at midnight — can be tested without rendering anything.
  */
 
-import type { ChatPlan } from "./chatPlan";
+import type { ChatPlan, EditPreview, RowEdit } from "./chatPlan";
 
 export interface StoredTurn {
   who: "you" | "forge";
@@ -19,6 +19,11 @@ export interface StoredTurn {
   plan?: ChatPlan | null;
   /** a whole list of pictures, when many were asked for at once */
   rows?: ChatPlan[] | null;
+  /** changes to existing rows, waiting to be applied */
+  edits?: RowEdit[] | null;
+  previews?: EditPreview[] | null;
+  /** true once those changes have been applied */
+  editsApplied?: boolean;
   corrections?: string[];
   rowId?: number;
   /** how many of a list have been put into the manifest */
