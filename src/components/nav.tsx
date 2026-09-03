@@ -31,6 +31,15 @@ export interface PillItem {
   label: string;
   /** shown as a small count on the pill */
   badge?: string;
+  /**
+   * True when clicking opens a panel rather than going somewhere.
+   *
+   * Some of these open a list and some are a destination, and there was no way
+   * to tell which without clicking. A chevron on the ones that open is the
+   * convention everywhere; the important part is that it is present on all of
+   * them or none, never some.
+   */
+  opens?: boolean;
 }
 
 export function PillNav({
@@ -109,6 +118,20 @@ export function PillNav({
             {it.label}
             {it.badge && (
               <span className="ml-1.5 rounded-full bg-ember/20 px-1.5 font-mono text-[9.5px] text-ember">{it.badge}</span>
+            )}
+            {it.opens && (
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className={`ml-1 inline-block h-2.5 w-2.5 opacity-60 transition-transform ${active ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
             )}
           </button>
         );

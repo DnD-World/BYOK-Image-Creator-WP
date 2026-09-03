@@ -145,28 +145,12 @@ export default function ManifestView(p: ManifestViewProps) {
           {p.rows.length}/{p.total} rows
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {/* Three separate download buttons sat here, plus a fourth in the
-              header, all wearing the same arrow. Two of these are the same
-              action in two file formats, so they are one control now. */}
+          {/* Import stays here, beside the table it fills. The three ways to
+              download moved into one "Download" menu in the top bar — they
+              were three buttons wearing the same arrow across two rows. */}
           <Btn onClick={() => setImportOpen(true)} title="Read a CSV file into the manifest. Missing columns are forgiven.">
             <IUpload size={13} /> Import CSV
           </Btn>
-          <div className="flex overflow-hidden rounded-lg border border-line">
-            <button
-              onClick={p.exportCsv}
-              title="Save the manifest as a CSV file — the same format Import reads back"
-              className="btn-press flex items-center gap-1.5 px-2.5 py-2 text-[13px] text-parch hover:bg-raise hover:text-cream"
-            >
-              <IDownload size={13} /> Export
-            </button>
-            <button
-              onClick={p.exportXlsx}
-              title="Save the manifest as a spreadsheet, for handing to someone who wants Excel"
-              className="btn-press border-l border-line px-2.5 py-2 font-mono text-[10.5px] text-dust hover:bg-raise hover:text-cream"
-            >
-              xlsx
-            </button>
-          </div>
           <Btn variant="primary" onClick={p.addRow} title="Add one empty row to fill in yourself">
             <IPlus size={13} /> Add a picture
           </Btn>

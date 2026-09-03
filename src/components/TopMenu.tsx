@@ -18,6 +18,8 @@ export type View =
   | "docs"
   | "agents";
 
+type PanelId = "wizards" | "gallery" | "settings" | "docs" | "download";
+
 export type SettingsSection =
   | "engines"
   | "styles"
@@ -217,6 +219,8 @@ export default function TopMenu({
   onRerunMarked,
   onWpImport,
   onZip,
+  onExportCsv,
+  onExportXlsx,
   motion,
 }: {
   view: View;
@@ -231,9 +235,11 @@ export default function TopMenu({
   onRerunMarked: () => void;
   onWpImport: () => void;
   onZip: () => void;
+  onExportCsv: () => void;
+  onExportXlsx: () => void;
   motion: MotionLevel;
 }) {
-  const [panel, setPanel] = useState<"wizards" | "gallery" | "settings" | null>(null);
+  const [panel, setPanel] = useState<PanelId | null>(null);
 
   // Which pill is lit. Several views live under one destination.
   const activePill =
@@ -275,15 +281,19 @@ export default function TopMenu({
     { id: "advanced", title: "Advanced", hint: "check the forge, repair, backup, update", icon: <IRetry size={15} />, onPick: () => onNav("settings", "advanced") },
   ];
 
+  const docsCards: NavCard[] = [
+    { id: "docs", title: "The manual", hint: "setup to finished pictures, step by step", icon: <IBook size={15} />, onPick: () => onNav("docs") },
+    { id: "agents", title: "Agents & API", hint: "MCP, n8n and LangChain recipes", icon: <ISparkle size={15} />, onPick: () => onNav("agents") },
+  ];
+
   const pick = (id: string) => {
-    if (id === "wizards" || id === "gallery" || id === "settings") {
-      setPanel((p) => (p === id ? null : (id as "wizards" | "gallery" | "settings")));
+    if (id === "wizards" || id === "gallery" || id === "settings" || id === "docs") {
+      setPanel((p) => (p === id ? null : (id as PanelId)));
       return;
     }
     setPanel(null);
     if (id === "workbench") onNav("workbench");
     else if (id === "chat") onNav("chat");
-    else if (id === "docs") onNav("docs");
   };
 
   return (
@@ -296,35 +306,69 @@ export default function TopMenu({
           items={[
             { id: "workbench", label: "Forge" },
             { id: "chat", label: "Chat" },
-            { id: "wizards", label: "Wizards", badge: markedCount > 0 ? String(markedCount) : undefined },
-            { id: "gallery", label: "Gallery", badge: batchCount > 0 ? String(batchCount) : undefined },
-            { id: "docs", label: "Docs" },
-            { id: "settings", label: "Settings" },
+            { id: "wizards", label: "Wizards", badge: markedCount > 0 ? String(markedCount) : undefined, opens: true },
+            { id: "gallery", label: "Gallery", badge: batchCount > 0 ? String(batchCount) : undefined, opens: true },
+            { id: "docs", label: "Docs", opens: true },
+            { id: "settings", label: "Settings", opens: true },
           ]}
         />
         {panel === "wizards" && <CardPanel level={motion} cards={wizardCards} onClose={() => setPanel(null)} />}
         {panel === "gallery" && <CardPanel level={motion} cards={galleryCards} onClose={() => setPanel(null)} />}
         {panel === "settings" && <CardPanel level={motion} cards={settingsCards} onClose={() => setPanel(null)} />}
+        {panel === "docs" && <CardPanel level={motion} cards={docsCards} onClose={() => setPanel(null)} />}
       </div>
 
       <div className="ml-1 flex items-center gap-2 border-l border-line pl-3">
         <ModelSelector provider={provider} onProvider={onProvider} settings={settings} />
-        {/* It used to be an icon and a bare number, which said neither what it
-            was nor what the number counted. */}
-        <button
-          onClick={onZip}
-          disabled={doneCount === 0}
-          title={
-            doneCount === 0
-              ? "Nothing finished yet to download"
-              : `Download all ${doneCount} finished picture${doneCount > 1 ? "s" : ""} as one ZIP, with the folders and the CSV inside`
-          }
-          className="btn-press hidden items-center gap-1.5 rounded-lg border border-line bg-panel/70 px-2.5 py-2 text-parch hover:border-line2 disabled:opacity-35 sm:flex"
-        >
-          <IDownload size={13} className="text-dust" />
-          <span className="text-[12px]">Download</span>
-          <span className="font-mono text-[10px] text-dust">{doneCount}</span>
-        </button>
+        {/* Three download buttons wearing the same arrow used to be spread
+            across two rows. One control, and it says what each thing is. */}
+        <div className="relative hidden sm:block">
+          <button
+            onClick={() => setPanel((p) => (p === "download" ? null : "download"))}
+            title="Save your pictures or your manifest"
+            className={`btn-press flex items-center gap-1.5 rounded-lg border px-2.5 py-2 ${
+              panel === "download" ? "border-ember/60 bg-ember/15 text-cream" : "border-line bg-panel/70 text-parch hover:border-line2"
+            }`}
+          >
+            <IDownload size={13} className="text-dust" />
+            <span className="text-[12px]">Download</span>
+            <svg aria-hidden viewBox="0 0 24 24" className="h-2.5 w-2.5 opacity-60" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {panel === "download" && (
+            <CardPanel
+              level={motion}
+              onClose={() => setPanel(null)}
+              cards={[
+                {
+                  id: "zip",
+                  title: doneCount > 0 ? `The pictures (${doneCount})` : "The pictures",
+                  hint:
+                    doneCount > 0
+                      ? "one ZIP, sorted into folders, with the CSV inside"
+                      : "nothing finished yet — forge something first",
+                  icon: <IImage size={15} />,
+                  onPick: () => doneCount > 0 && onZip(),
+                },
+                {
+                  id: "csv",
+                  title: "The manifest, as CSV",
+                  hint: "the same format Import reads back",
+                  icon: <IDownload size={15} />,
+                  onPick: onExportCsv,
+                },
+                {
+                  id: "xlsx",
+                  title: "The manifest, as a spreadsheet",
+                  hint: "for handing to someone who wants Excel",
+                  icon: <IDownload size={15} />,
+                  onPick: onExportXlsx,
+                },
+              ]}
+            />
+          )}
+        </div>
 
       </div>
     </nav>

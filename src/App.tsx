@@ -1514,6 +1514,8 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           onWpImport={() => setWpOpen(true)}
           onZip={zipAll}
           motion={motionLevel}
+              onExportCsv={exportCsv}
+              onExportXlsx={exportXlsx}
             />
 
         <div className="ml-auto flex items-center gap-2">
@@ -1527,7 +1529,12 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           </button>
           {/* Everything that moves, behind one door. Sheets, vectors, Lottie
               and GIFs were four separate ideas in the UI and one idea to a
-              person: making something animate. */}
+              person: making something animate.
+
+              Hidden until a picture exists: every one of these needs something
+              to work from, so offering them on an empty manifest is offering
+              a dead end. */}
+          {doneCount > 0 && (
           <div className="relative">
             <button
               onClick={() => setAnimateOpen((o) => !o)}
@@ -1576,18 +1583,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               />
             )}
           </div>
-          <button
-            onClick={() => (folder.linked ? syncAllToFolder() : linkFolder())}
-            title={folder.linked ? `Sync all plates to ${folder.name}` : "Link an output folder"}
-            className={`btn-press flex items-center gap-1.5 rounded-lg border px-2.5 py-2 ${
-              folder.linked ? "border-moss/50 bg-moss/10 text-moss hover:bg-moss/20" : "border-line bg-panel/70 text-parch hover:border-line2"
-            }`}
-          >
-            <IFolder size={14} />
-            <span className="hidden max-w-[110px] truncate font-mono text-[10px] md:inline">
-              {folder.linked ? folder.name : folder.pendingName ? `re-link ${folder.pendingName}` : "link folder"}
-            </span>
-          </button>
+          )}
           <span className="hidden font-mono text-[10.5px] text-dust xl:block">
             {queueLen > 0 ? `${queueLen} awaiting the hammer` : coolingCount > 0 ? `${coolingCount} cooling` : "queue clear"}
           </span>
