@@ -103,3 +103,25 @@ describe("a shebang and CRLF must never meet again", () => {
     expect(attrs).toMatch(/text=auto\s+eol=lf/);
   });
 });
+
+describe("the desktop app must keep the same origin every launch", () => {
+  it("never asks for a random port", async () => {
+    // listen(0) means "any free port". The browser keys localStorage by
+    // ORIGIN, and the port is part of it, so a new port each launch meant a
+    // new empty storage each launch — settings, engine keys and the manifest
+    // all appearing to reset themselves on restart. Nothing was failing to
+    // save; each launch looked in a different box.
+    const main = await readFile("electron/main.js", "utf8");
+    expect(main).not.toMatch(/\.listen\(\s*0\s*,/);
+  });
+
+  it("uses a fixed list of ports", async () => {
+    const main = await readFile("electron/main.js", "utf8");
+    expect(main).toMatch(/const PORTS\s*=\s*\[\s*\d{4,5}/);
+  });
+
+  it("still falls back when a port is busy, rather than refusing to start", async () => {
+    const main = await readFile("electron/main.js", "utf8");
+    expect(main).toMatch(/EADDRINUSE/);
+  });
+});

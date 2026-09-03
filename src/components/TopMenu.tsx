@@ -233,14 +233,14 @@ export default function TopMenu({
   onZip: () => void;
   motion: MotionLevel;
 }) {
-  const [panel, setPanel] = useState<"wizards" | "library" | "settings" | null>(null);
+  const [panel, setPanel] = useState<"wizards" | "gallery" | "settings" | null>(null);
 
   // Which pill is lit. Several views live under one destination.
   const activePill =
     view === "wizard" || view === "factory"
       ? "wizards"
       : view.startsWith("lib-")
-        ? "library"
+        ? "gallery"
         : view === "docs" || view === "agents"
           ? "docs"
           : view === "chat"
@@ -256,7 +256,7 @@ export default function TopMenu({
     { id: "wp", title: "Import to WordPress", hint: "real upload with an app password", icon: <IUpload size={15} />, badge: doneCount > 0 ? String(doneCount) : undefined, onPick: onWpImport },
   ];
 
-  const libraryCards: NavCard[] = [
+  const galleryCards: NavCard[] = [
     { id: "lib-images", title: "Images", hint: "mark, note and redo any picture", icon: <IImage size={15} />, onPick: () => onNav("lib-images") },
     { id: "lib-styles", title: "Styles", hint: "the built-in languages, and your own", icon: <IFlask size={15} />, onPick: () => onNav("lib-styles") },
     { id: "lib-templates", title: "Templates", hint: "saved setups, ready to reuse", icon: <IWand size={15} />, badge: templateCount > 0 ? String(templateCount) : undefined, onPick: () => onNav("lib-templates") },
@@ -276,8 +276,8 @@ export default function TopMenu({
   ];
 
   const pick = (id: string) => {
-    if (id === "wizards" || id === "library" || id === "settings") {
-      setPanel((p) => (p === id ? null : (id as "wizards" | "library" | "settings")));
+    if (id === "wizards" || id === "gallery" || id === "settings") {
+      setPanel((p) => (p === id ? null : (id as "wizards" | "gallery" | "settings")));
       return;
     }
     setPanel(null);
@@ -297,13 +297,13 @@ export default function TopMenu({
             { id: "workbench", label: "Forge" },
             { id: "chat", label: "Chat" },
             { id: "wizards", label: "Wizards", badge: markedCount > 0 ? String(markedCount) : undefined },
-            { id: "library", label: "Library", badge: batchCount > 0 ? String(batchCount) : undefined },
+            { id: "gallery", label: "Gallery", badge: batchCount > 0 ? String(batchCount) : undefined },
             { id: "docs", label: "Docs" },
             { id: "settings", label: "Settings" },
           ]}
         />
         {panel === "wizards" && <CardPanel level={motion} cards={wizardCards} onClose={() => setPanel(null)} />}
-        {panel === "library" && <CardPanel level={motion} cards={libraryCards} onClose={() => setPanel(null)} />}
+        {panel === "gallery" && <CardPanel level={motion} cards={galleryCards} onClose={() => setPanel(null)} />}
         {panel === "settings" && <CardPanel level={motion} cards={settingsCards} onClose={() => setPanel(null)} />}
       </div>
 

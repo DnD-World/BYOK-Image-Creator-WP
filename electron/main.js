@@ -2,7 +2,7 @@
  * Image Forge desktop shell (Electron, ESM).
  *
  * The built site (dist/) is served by a tiny embedded HTTP server on
- * http://127.0.0.1:<random-port>. Two reasons we don't just open the html file:
+ * http://127.0.0.1:<fixed-port>. Two reasons we don't just open the html file:
  *   1. Vite emits absolute asset paths (/assets/...) which need a web root.
  *   2. 127.0.0.1 is a *secure context* — so the File System Access API
  *      (link output folder) keeps working inside the desktop app.
@@ -78,6 +78,14 @@ function proxyToCloudflare(req, res) {
   req.pipe(upstream);
 }
 
+/**
+ * The ports the desktop app will use, in order.
+ *
+ * Stable on purpose — see the note in startServer. Chosen high and unusual to
+ * avoid colliding with anything a developer is likely to be running.
+ */
+const PORTS = [47821, 47822, 47823, 47824, 47825];
+
 function startServer(distDir) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -106,8 +114,46 @@ function startServer(distDir) {
       res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
       fs.createReadStream(filePath).pipe(res);
     });
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port }));
+    /*
+     * A FIXED port, not a random one.
+     *
+     * This used to be listen(0), meaning "any free port". That is the usual
+     * advice and it was wrong here, badly: the browser keys localStorage by
+     * ORIGIN, and the port is part of the origin. A new port every launch
+     * meant a new origin every launch, so every restart came up with empty
+     * storage — settings, engine keys and the manifest all apparently "reset
+     * themselves". Nothing was failing to save; each launch was simply
+     * looking in a different box.
+     *
+     * So the port must be stable across launches. If it is taken we step
+     * through a short fixed list rather than asking for a random one, so the
+     * origin stays predictable and data is still found on the next run.
+     */
+    const tryPorts = [...PORTS];
+    const attempt = () => {
+      const port = tryPorts.shift();
+      if (port === undefined) {
+        reject(
+          new Error(
+            "Every port Image Forge uses is busy. Close the other copy of Image Forge, or whatever is using ports " +
+              `${PORTS[0]}–${PORTS[PORTS.length - 1]}, and try again.`
+          )
+        );
+        return;
+      }
+      server.listen(port, "127.0.0.1");
+    };
+
+    server.on("error", (e) => {
+      if (e && e.code === "EADDRINUSE") {
+        // Another copy of the app, or something else on that port. Step on.
+        attempt();
+        return;
+      }
+      reject(e);
+    });
+    server.on("listening", () => resolve({ server, port: server.address().port }));
+    attempt();
   });
 }
 
