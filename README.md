@@ -135,8 +135,9 @@ There is no backend. Keys live in your browser's local storage, or in
 place: the engine you chose. Nothing is phoned home, because there is nowhere
 to phone.
 
-The desktop build serves itself over `127.0.0.1` on a random port, with
-context isolation on and navigation locked to itself.
+The desktop build serves itself over `127.0.0.1` on a fixed local port, with
+context isolation on and navigation locked to itself. Nothing listens on any
+other interface, so nothing on your network can reach it.
 
 </details>
 
