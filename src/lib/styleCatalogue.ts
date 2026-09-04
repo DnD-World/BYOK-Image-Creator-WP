@@ -267,6 +267,61 @@ export const STYLE_CATALOGUE: StyleEntry[] = [
     recommended: USUAL,
   },
 
+  /*
+   * Skilitsa — the house look, in two halves.
+   *
+   * The brief for this one said "Pixar-style". The studio's name is not in
+   * the prompt, and that is deliberate: the catalogue has never named a
+   * studio, because a prompt that leans on a trademark is both a legal grey
+   * area and unreliable — several models refuse it outright and others water
+   * it down. Everything the name was standing in for is written out instead,
+   * which is what actually steers the render.
+   *
+   * The branded one carries a small "skilitsa.com" mark. That is text in the
+   * picture, and only the models that can genuinely spell are offered for it:
+   * on a free engine the mark comes out as convincing-looking nonsense, which
+   * is worse than no mark at all because at thumbnail size it reads as real.
+   * The plain one is the same look with no mark, and runs anywhere for free.
+   */
+  {
+    id: "skilitsa",
+    name: "Skilitsa",
+    group: "anime",
+    blurb: "Big-studio 3D cartoon in happy, sassy colour, with a small skilitsa.com mark worked into the scene.",
+    block:
+      `high-detail 3D animated cartoon in a modern animated-feature style, cinematic CGI render, ultra-detailed and polished, ` +
+      `friendly slightly exaggerated proportions, large expressive eyes, clear readable silhouette, soft subsurface scattering on skin and fur, ` +
+      `warm cinematic three-point lighting, soft shadows, gentle rim light, subtle ambient occlusion, ` +
+      `happy sassy palette — saturated but harmonious, warm highlights, rich mid-tones, playful teal coral sunny-yellow electric-blue magenta accents, ` +
+      `detailed supporting background with shallow depth of field, one clear focal subject in a dynamic story-like pose with an unmistakable emotion, ` +
+      `a small discreet legible sans-serif "skilitsa.com" mark integrated naturally into the scene on a tag, sticker, sign or screen in a lower corner, ` +
+      `about 3% of the image width, never covering the subject's face, ${CLEAN}`,
+    negative:
+      "dull muddy desaturated palette, flat lighting, cluttered composition, extra text or captions, " +
+      "misspelled or garbled lettering, watermark across the subject's face, photorealistic human skin, 2D flat illustration",
+    swatch: ["#ff7f5c", "#2ec4b6", "#ffd166"],
+    // The mark has to be readable, so only the models that can spell.
+    recommended: TEXTY,
+    needsText: true,
+  },
+  {
+    id: "skilitsa-plain",
+    name: "Skilitsa Plain",
+    group: "anime",
+    blurb: "The same big-studio 3D cartoon and happy, sassy colour — no branding, so any free engine can make it.",
+    block:
+      `high-detail 3D animated cartoon in a modern animated-feature style, cinematic CGI render, ultra-detailed and polished, ` +
+      `friendly slightly exaggerated proportions, large expressive eyes, clear readable silhouette, soft subsurface scattering on skin and fur, ` +
+      `warm cinematic three-point lighting, soft shadows, gentle rim light, subtle ambient occlusion, ` +
+      `happy sassy palette — saturated but harmonious, warm highlights, rich mid-tones, playful teal coral sunny-yellow electric-blue magenta accents, ` +
+      `detailed supporting background with shallow depth of field, one clear focal subject in a dynamic story-like pose with an unmistakable emotion, ${CLEAN}`,
+    negative:
+      "dull muddy desaturated palette, flat lighting, cluttered composition, any text lettering signage or watermark, " +
+      "photorealistic human skin, 2D flat illustration",
+    swatch: ["#ff7f5c", "#2ec4b6", "#ffd166"],
+    recommended: USUAL,
+  },
+
   /* ---------------- photographic ---------------- */
   {
     id: "photoreal",

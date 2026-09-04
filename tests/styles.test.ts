@@ -9,7 +9,7 @@ import {
   styleById,
   stylesInGroup,
 } from "../src/lib/styleCatalogue";
-import { MODELS } from "../src/lib/engines.mjs";
+import { MODELS, MODEL_TRAITS } from "../src/lib/engines.mjs";
 import { STYLES } from "../src/types";
 
 const nothingSetUp = {};
@@ -170,5 +170,109 @@ describe("what a style will use by default", () => {
   it("still answers when nothing at all is set up", () => {
     const pick = defaultModelForStyle(styleById("photoreal")!, nothingSetUp);
     expect(pick).toBe(styleById("photoreal")!.recommended[0]);
+  });
+});
+
+/**
+ * The house look, and the honesty its branded half needs.
+ *
+ * The brief asked for a small "skilitsa.com" mark in every picture. That is
+ * text in the image, and only a handful of models can render text legibly —
+ * on the rest it comes out as convincing-looking nonsense, which at thumbnail
+ * size reads as a real logo. So the branded style is treated exactly like the
+ * infographic and poster styles: marked as needing words, and offered only to
+ * models that can spell. The plain half carries no mark and runs free
+ * anywhere.
+ */
+describe("the Skilitsa house styles", () => {
+  const branded = styleById("skilitsa")!;
+  const plain = styleById("skilitsa-plain")!;
+
+  it("ships both halves", () => {
+    expect(branded).toBeDefined();
+    expect(plain).toBeDefined();
+  });
+
+  it("asks for the mark in the branded one, and only there", () => {
+    expect(branded.block).toContain("skilitsa.com");
+    expect(plain.block).not.toContain("skilitsa.com");
+  });
+
+  it("declares the branded one as needing readable words", () => {
+    // This is what makes the app warn before spending a free generation on a
+    // model that will produce a garbled mark.
+    expect(branded.needsText).toBe(true);
+    expect(TEXT_DEPENDENT_STYLES).toContain("skilitsa");
+  });
+
+  it("offers the branded one only to models that can spell", () => {
+    for (const m of branded.recommended) {
+      expect(MODEL_TRAITS[m as keyof typeof MODEL_TRAITS]?.textQuality, m).toBe("good");
+    }
+  });
+
+  it("leaves the plain one free to run on a free engine", () => {
+    expect(plain.needsText).toBeFalsy();
+    expect(plain.recommended.some((m) => m === "local" || isFreeModel(m))).toBe(true);
+  });
+
+  it("keeps the two looks identical apart from the mark", () => {
+    // If these drift, "same look, no branding" stops being true and the
+    // choice between them becomes a choice between two different styles.
+    const strip = (s: string) => s.split(",").map((p) => p.trim()).filter((p) => !/skilitsa|mark|tag, sticker/i.test(p));
+    const shared = strip(plain.block);
+    const brandedParts = strip(branded.block);
+    for (const part of shared) expect(brandedParts, part).toContain(part);
+  });
+
+  it("names no studio, however the brief was phrased", () => {
+    // Asked for as "Pixar-style". The look is written out instead — the
+    // catalogue-wide rule above covers this, and this pins the reason.
+    expect(/pixar/i.test(branded.block + plain.block + branded.blurb + plain.blurb)).toBe(false);
+  });
+});
+
+/**
+ * Favourites: a shortcut laid over the catalogue, never a filter.
+ *
+ * The ordering below is the whole behaviour, and it lives in two components
+ * (the style library and the wizard's picker) that must agree. Pinning it here
+ * means one of them drifting is a failed test rather than a surprise.
+ */
+const orderWithFavorites = <T extends { id: string }>(all: T[], favorites: string[]): T[] => [
+  ...favorites.map((id) => all.find((s) => s.id === id)).filter((s): s is T => Boolean(s)),
+  ...all.filter((s) => !favorites.includes(s.id)),
+];
+
+describe("starred styles", () => {
+  const all = STYLE_CATALOGUE;
+
+  it("puts the starred ones first, in the order they were starred", () => {
+    const out = orderWithFavorites(all, ["poster-typographic", "claymation"]);
+    expect(out.slice(0, 2).map((s) => s.id)).toEqual(["poster-typographic", "claymation"]);
+  });
+
+  it("loses nothing — every style is still there exactly once", () => {
+    const out = orderWithFavorites(all, ["claymation", "anime-chibi"]);
+    expect(out).toHaveLength(all.length);
+    expect(new Set(out.map((s) => s.id)).size).toBe(all.length);
+  });
+
+  it("keeps the catalogue order for everything not starred", () => {
+    const out = orderWithFavorites(all, ["anime-chibi"]);
+    const unstarred = out.slice(1).map((s) => s.id);
+    expect(unstarred).toEqual(all.filter((s) => s.id !== "anime-chibi").map((s) => s.id));
+  });
+
+  it("ignores a starred id that no longer exists", () => {
+    // A custom style can be deleted while still starred. Silently dropping it
+    // is right; rendering an undefined card is not.
+    const out = orderWithFavorites(all, ["a-style-that-was-deleted", "claymation"]);
+    expect(out[0].id).toBe("claymation");
+    expect(out).toHaveLength(all.length);
+  });
+
+  it("changes nothing at all when nothing is starred", () => {
+    expect(orderWithFavorites(all, []).map((s) => s.id)).toEqual(all.map((s) => s.id));
   });
 });

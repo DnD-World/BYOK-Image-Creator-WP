@@ -9,7 +9,7 @@ import { DEFAULT_SETUP } from "../lib/batches";
 import { autoFixFilename, validateFilename } from "../lib/validate";
 import PromptFactory from "./PromptFactory";
 import { BorderGlow } from "./effects";
-import { Btn, CatChip, IAlert, ICheck, IFolder, IGear, IPlay, IX } from "./ui";
+import { Btn, CatChip, IAlert, ICheck, IFolder, IGear, IPlay, IStar, IX } from "./ui";
 
 const STEPS = [
   { name: "Name it", short: "what is this batch for?" },
@@ -121,6 +121,19 @@ export default function WizardView({
     ...settings.customStyles.map((c) => ({ ...c, swatch: ["#f4e8d4", "#97876d", "#57432c"] as [string, string, string] })),
   ];
   const styleDef = allStyles.find((s) => s.id === setup.styleId);
+  /**
+   * Starred looks float to the top of the picker.
+   *
+   * This is the screen where the shortcut earns its keep: thirty-six cards to
+   * scroll past every time you start a batch, when in practice you reach for
+   * the same three or four. Nothing is hidden — the rest follow underneath in
+   * catalogue order.
+   */
+  const favoriteStyles = settings.favoriteStyles;
+  const orderedStyles = [
+    ...favoriteStyles.map((id) => allStyles.find((s) => s.id === id)).filter((s): s is (typeof allStyles)[number] => Boolean(s)),
+    ...allStyles.filter((s) => !favoriteStyles.includes(s.id)),
+  ];
 
   const geminiReady = settings.geminiKeys.some((k) => k.key.trim());
   const openaiReady = settings.openaiKeys.some((k) => k.key.trim());
@@ -312,8 +325,9 @@ export default function WizardView({
                 belongs together — like cards from the same game box.
               </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {allStyles.map((s) => {
+                {orderedStyles.map((s) => {
                   const active = setup.styleId === s.id;
+                  const starred = favoriteStyles.includes(s.id);
                   return (
                     <BorderGlow key={s.id} radius={13} glow={active ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "rgba(242,163,60,0.35)"} idle={active ? "color-mix(in srgb, var(--color-ember) 50%, transparent)" : "var(--color-line)"} innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}>
                       <button onClick={() => patch({ styleId: s.id })} className="btn-press w-full p-4 text-left">
@@ -327,6 +341,7 @@ export default function WizardView({
                             <span className={`font-display text-[15px] tracking-wide ${active ? "text-ember" : "text-cream"}`}>{s.name}</span>
                             <span className="mt-0.5 block font-mono text-[10px] text-dust">{s.block}</span>
                           </span>
+                          {starred && !active && <IStar size={14} filled className="shrink-0 text-ember/70" />}
                           {active && <ICheck size={16} className="shrink-0 text-ember" />}
                         </span>
                       </button>

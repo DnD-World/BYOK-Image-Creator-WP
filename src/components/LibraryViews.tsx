@@ -5,7 +5,7 @@ import type { ForgeSettings } from "../lib/providers";
 import { SCRIBE_SYSTEMS, formatCountdown, scribeChat } from "../lib/providers";
 import type { Batch, SavedSetup } from "../lib/batches";
 import { BorderGlow } from "./effects";
-import { Btn, CatChip, ICheck, IDownload, IHammer, IPlay, IRetry, ISearch, IThumbDown, IThumbUp, ITrash, IWand, IX, StatusChip } from "./ui";
+import { Btn, CatChip, ICheck, IDownload, IHammer, IPlay, IRetry, ISearch, IStar, IThumbDown, IThumbUp, ITrash, IWand, IX, StatusChip } from "./ui";
 
 const RatioThumb = ({ row, width = 150 }: { row: ManifestRow; width?: number }) => {
   const dims = ASPECTS[row.aspect_ratio];
@@ -233,6 +233,87 @@ export function StyleLibrary({
     ...settings.customStyles.map((c) => ({ ...c, swatch: ["#f4e8d4", "#97876d", "#57432c"] as [string, string, string] })),
   ];
 
+  /**
+   * Starred styles come first, in the order they were starred.
+   *
+   * Not a group in the catalogue: a style belongs to one group by what it
+   * looks like, and moving it into a "favourites" group would take it out of
+   * the family it belongs to. This is a shortcut laid over the top — a
+   * starred style appears at the front AND stays where it was, so nothing
+   * ever goes missing because you starred it.
+   */
+  const favorites = settings.favoriteStyles;
+  const starred = favorites
+    .map((id) => all.find((s) => s.id === id))
+    .filter((s): s is (typeof all)[number] => Boolean(s));
+  const rest = all.filter((s) => !favorites.includes(s.id));
+
+  const toggleFavorite = (id: string) =>
+    patchSettings({
+      favoriteStyles: favorites.includes(id) ? favorites.filter((f) => f !== id) : [id, ...favorites],
+    });
+
+  /** One card, drawn the same whether it sits in favourites or below. */
+  const styleCard = (s: (typeof all)[number]) => {
+    const active = styleLock === s.id;
+    const starredHere = favorites.includes(s.id);
+    return (
+      <BorderGlow
+        key={s.id}
+        radius={14}
+        glow={active ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "color-mix(in srgb, var(--color-ember) 40%, transparent)"}
+        idle={active ? "color-mix(in srgb, var(--color-ember) 50%, transparent)" : "var(--color-line)"}
+        innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}
+      >
+        <div className="p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex overflow-hidden rounded-md border border-line">
+              {s.swatch.map((c) => (
+                <span key={c} className="h-5 w-5" style={{ background: c }} />
+              ))}
+            </span>
+            <span className="flex-1 font-display text-[15px] tracking-wide text-cream">{s.name}</span>
+            {active && (
+              <span className="rounded-md border border-ember/50 bg-ember/12 px-2 py-0.5 font-mono text-[9px] tracking-widest text-ember uppercase">
+                locked
+              </span>
+            )}
+            <button
+              onClick={() => toggleFavorite(s.id)}
+              aria-pressed={starredHere}
+              title={starredHere ? "Remove from favourites" : "Keep this one at the top"}
+              className={`btn-press shrink-0 rounded-md p-1 transition ${starredHere ? "text-ember" : "text-dust hover:text-parch"}`}
+            >
+              <IStar size={15} filled={starredHere} />
+            </button>
+          </div>
+          <p className="mt-2 font-mono text-[10.5px] leading-relaxed text-dust">{s.block}</p>
+          <div className="mt-3 flex gap-2">
+            <Btn variant={active ? "ghost" : "primary"} className="!px-2.5 !py-1.5 !text-[11px]" onClick={() => setStyleLock(s.id)}>
+              {active ? "locked ✓" : "Lock this look"}
+            </Btn>
+            {settings.customStyles.some((c) => c.id === s.id) && (
+              <Btn
+                variant="danger"
+                className="!px-2.5 !py-1.5 !text-[11px]"
+                onClick={() =>
+                  patchSettings({
+                    customStyles: settings.customStyles.filter((c) => c.id !== s.id),
+                    // A removed style must not linger as a favourite, or the
+                    // favourites row silently shrinks with no explanation.
+                    favoriteStyles: favorites.filter((f) => f !== s.id),
+                  })
+                }
+              >
+                <ITrash size={11} /> Remove
+              </Btn>
+            )}
+          </div>
+        </div>
+      </BorderGlow>
+    );
+  };
+
   const addStyle = (id: string, sName: string, sBlock: string) => {
     patchSettings({ customStyles: [...settings.customStyles, { id, name: sName, block: sBlock }] });
     pushToast("ok", `Style “${sName}” added to the library.`);
@@ -273,37 +354,17 @@ export function StyleLibrary({
         </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {all.map((s) => {
-          const active = styleLock === s.id;
-          return (
-            <BorderGlow key={s.id} radius={14} glow={active ? "color-mix(in srgb, var(--color-ember) 60%, transparent)" : "color-mix(in srgb, var(--color-ember) 40%, transparent)"} idle={active ? "color-mix(in srgb, var(--color-ember) 50%, transparent)" : "var(--color-line)"} innerClassName={active ? "bg-[var(--color-panel2)]" : "bg-[var(--color-panel)]"}>
-              <div className="p-4">
-                <div className="flex items-center gap-3">
-                  <span className="flex overflow-hidden rounded-md border border-line">
-                    {s.swatch.map((c) => (
-                      <span key={c} className="h-5 w-5" style={{ background: c }} />
-                    ))}
-                  </span>
-                  <span className="flex-1 font-display text-[15px] tracking-wide text-cream">{s.name}</span>
-                  {active && <span className="rounded-md border border-ember/50 bg-ember/12 px-2 py-0.5 font-mono text-[9px] tracking-widest text-ember uppercase">locked</span>}
-                </div>
-                <p className="mt-2 font-mono text-[10.5px] leading-relaxed text-dust">{s.block}</p>
-                <div className="mt-3 flex gap-2">
-                  <Btn variant={active ? "ghost" : "primary"} className="!px-2.5 !py-1.5 !text-[11px]" onClick={() => setStyleLock(s.id)}>
-                    {active ? "locked ✓" : "Lock this look"}
-                  </Btn>
-                  {settings.customStyles.some((c) => c.id === s.id) && (
-                    <Btn variant="danger" className="!px-2.5 !py-1.5 !text-[11px]" onClick={() => patchSettings({ customStyles: settings.customStyles.filter((c) => c.id !== s.id) })}>
-                      <ITrash size={11} /> Remove
-                    </Btn>
-                  )}
-                </div>
-              </div>
-            </BorderGlow>
-          );
-        })}
-      </div>
+      {starred.length > 0 && (
+        <>
+          <p className="mb-2.5 font-mono text-[10.5px] tracking-[0.24em] text-ember uppercase">
+            favourites <span className="text-dust">· {starred.length}</span>
+          </p>
+          <div className="mb-8 grid gap-3 sm:grid-cols-2">{starred.map(styleCard)}</div>
+          <p className="mb-2.5 font-mono text-[10.5px] tracking-[0.24em] text-dust uppercase">everything else</p>
+        </>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">{rest.map(styleCard)}</div>
 
       <div className="mt-8 rounded-2xl border border-line bg-panel/50 p-5">
         <p className="font-display text-[15px] tracking-wide text-cream">Add your own style</p>

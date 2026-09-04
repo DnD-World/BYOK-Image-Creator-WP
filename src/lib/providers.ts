@@ -151,6 +151,15 @@ export interface ForgeSettings {
     motion: "system" | "full" | "reduced" | "off";
   };
   customStyles: { id: string; name: string; block: string }[];
+  /**
+   * Style ids you starred, newest first.
+   *
+   * Not a group in the catalogue: a style belongs to one group by what it
+   * looks like, and putting it in a "favourites" group instead would move it
+   * out of the family it belongs to. This is a separate list laid over the
+   * top, so a starred style appears both at the front and in its own group.
+   */
+  favoriteStyles: string[];
 }
 
 /** Build a provider list from whatever the three engines were already using. */
@@ -229,6 +238,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
     motion: "system",
   },
   customStyles: [],
+  favoriteStyles: [],
 };
 
 export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
@@ -267,6 +277,7 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
       return { ...DEFAULT_SETTINGS.ambient, ...migrated };
     })(),
     customStyles: s.customStyles ?? [],
+    favoriteStyles: Array.isArray(s.favoriteStyles) ? s.favoriteStyles : [],
     geminiKeys: s.geminiKeys?.length ? s.geminiKeys : DEFAULT_SETTINGS.geminiKeys,
     geminiPaidKeys: s.geminiPaidKeys?.length ? s.geminiPaidKeys : DEFAULT_SETTINGS.geminiPaidKeys,
     openaiKeys: s.openaiKeys?.length ? s.openaiKeys : DEFAULT_SETTINGS.openaiKeys,

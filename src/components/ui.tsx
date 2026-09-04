@@ -22,6 +22,22 @@ const S = ({ size = 16, className = "", children }: IconProps & { children: Reac
   </svg>
 );
 
+/**
+ * A star, in two states.
+ *
+ * `filled` paints the inside as well as the outline, because at 13px an
+ * outline-only star and a filled one are hard to tell apart at a glance —
+ * and glancing is the entire point of a favourite.
+ */
+export const IStar = ({ filled = false, ...p }: IconProps & { filled?: boolean }) => (
+  <S {...p}>
+    <path
+      d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8-5.3-2.8-5.3 2.8 1-5.8-4.2-4.1 5.9-.9L12 3.5Z"
+      fill={filled ? "currentColor" : "none"}
+    />
+  </S>
+);
+
 export const IAnvil = (p: IconProps) => (
   <S {...p}>
     <path d="M5 6h14c0 3-2.5 5-6 5v3" />
