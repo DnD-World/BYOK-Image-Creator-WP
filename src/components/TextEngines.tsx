@@ -21,7 +21,7 @@
  */
 import { useCallback, useState } from "react";
 import type { ForgeSettings } from "../lib/providers";
-import { listChatModels } from "../lib/visionEngine";
+import { filterModels, listChatModels, statesPricing, type ChatModel } from "../lib/visionEngine";
 import { testCode, testConnection, testVision, type TestResult } from "../lib/testConnection";
 import { Btn, IAlert, ICheck, IFlask, IQuill, ISparkle, ITrash } from "./ui";
 
@@ -32,9 +32,9 @@ type JobId = "scribe" | "coder" | "vision";
 const PRESETS: { label: string; base: string; note: string; free: boolean; keyUrl: string }[] = [
   { label: "Mistral", base: "https://api.mistral.ai/v1", note: "free tier, and it can do all three jobs", free: true, keyUrl: "https://console.mistral.ai/api-keys" },
   { label: "OpenAI", base: "https://api.openai.com/v1", note: "paid", free: false, keyUrl: "https://platform.openai.com/api-keys" },
-  { label: "OpenRouter", base: "https://openrouter.ai/api/v1", note: "one key, hundreds of models", free: false, keyUrl: "https://openrouter.ai/keys" },
+  { label: "OpenRouter", base: "https://openrouter.ai/api/v1", note: "one key, hundreds of models — and the only one that publishes a price per model, so \"only free\" works properly here", free: false, keyUrl: "https://openrouter.ai/keys" },
   { label: "Google", base: "https://generativelanguage.googleapis.com/v1beta/openai", note: "Gemini and Gemma, via the OpenAI-shaped endpoint", free: false, keyUrl: "https://aistudio.google.com/apikey" },
-  { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1", note: "free credits to start", free: false, keyUrl: "https://build.nvidia.com/" },
+  { label: "NVIDIA", base: "https://integrate.api.nvidia.com/v1", note: "free credits to start. Lists a model id and nothing else — no prices, no capabilities — so the filters below cannot narrow it", free: false, keyUrl: "https://build.nvidia.com/" },
   { label: "Your own machine", base: "http://localhost:8080/v1", note: "free, private, no internet", free: true, keyUrl: "" },
 ];
 
@@ -54,10 +54,19 @@ export default function TextEngines({
   patchSettings: (p: Partial<ForgeSettings>) => void;
 }) {
   /** Models each account returned, keyed by provider id. Not persisted. */
-  const [models, setModels] = useState<Record<string, string[]>>({});
+  const [models, setModels] = useState<Record<string, ChatModel[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, TestResult>>({});
+  /**
+   * Hide models the provider said cost money.
+   *
+   * Deliberately does nothing to a provider that did not say. OpenRouter
+   * prices all 427 of its models, so this genuinely narrows it to the free
+   * ones; NVIDIA and Google disclose nothing, so their lists are untouched and
+   * the card says so rather than implying the tick did something.
+   */
+  const [hidePaid, setHidePaid] = useState(false);
 
   const providers = settings.textProviders;
   const setProviders = (next: Provider[]) => patchSettings({ textProviders: next });
@@ -83,7 +92,13 @@ export default function TextEngines({
       const r = await listChatModels({ base: p.base, key: p.key, model: "" });
       if (r.ok) {
         setModels((m) => ({ ...m, [p.id]: r.models }));
-        setNotes((n) => ({ ...n, [p.id]: `${r.models.length} models on this account.` }));
+        const free = r.models.filter((m) => m.free === true).length;
+        setNotes((n) => ({
+          ...n,
+          [p.id]: statesPricing(r.models)
+            ? `${r.models.length} models, ${free} of them free.`
+            : `${r.models.length} models. This provider does not publish prices.`,
+        }));
       } else {
         setNotes((n) => ({ ...n, [p.id]: r.problem }));
       }
@@ -92,10 +107,43 @@ export default function TextEngines({
     []
   );
 
-  /** Every model from every account, labelled with where it came from. */
-  const allModels = providers.flatMap((p) =>
-    (models[p.id] ?? []).map((m) => ({ providerId: p.id, providerLabel: p.label, model: m }))
+  /** The models one account offers, after the filters that apply to it. */
+  const shownFor = useCallback(
+    (providerId: string, visionOnly = false) =>
+      filterModels(models[providerId] ?? [], { freeOnly: hidePaid, visionOnly }),
+    [models, hidePaid]
   );
+
+  /**
+   * Every model from every account, each listed once.
+   *
+   * Two accounts on the same provider used to mean every model appearing
+   * twice, which made a long list twice as long and told you nothing: the
+   * entries were identical. One entry now, remembering every account that can
+   * serve it, so the engine still has an address and key to take.
+   */
+  const allModels = (() => {
+    const byId = new Map<string, { model: string; providerIds: string[]; providerLabels: string[] }>();
+    for (const p of providers) {
+      for (const m of shownFor(p.id)) {
+        const found = byId.get(m.id);
+        if (found) {
+          if (!found.providerIds.includes(p.id)) {
+            found.providerIds.push(p.id);
+            found.providerLabels.push(p.label);
+          }
+        } else {
+          byId.set(m.id, { model: m.id, providerIds: [p.id], providerLabels: [p.label] });
+        }
+      }
+    }
+    return [...byId.values()];
+  })();
+
+  /** True when at least one loaded account actually publishes its prices. */
+  const anyPricing = providers.some((p) => statesPricing(models[p.id] ?? []));
+  /** Loaded accounts that say nothing about price, so "hide paid" cannot help. */
+  const silentOnPricing = providers.filter((p) => (models[p.id] ?? []).length > 0 && !statesPricing(models[p.id] ?? []));
 
   const runTest = useCallback(
     async (job: JobId) => {
@@ -182,19 +230,56 @@ export default function TextEngines({
                   <ITrash size={13} />
                 </button>
                 {models[p.id] && (
-                  <span className="font-mono text-[10.5px] text-moss">{models[p.id].length} models loaded</span>
+                  <span className="font-mono text-[10.5px] text-moss">
+                    {shownFor(p.id).length} of {models[p.id].length} shown
+                  </span>
                 )}
                 {notes[p.id] && !models[p.id] && <span className="text-[11.5px] text-rust">{notes[p.id]}</span>}
               </div>
             </div>
           ))}
         </div>
+
+        {allModels.length > 0 && (
+          <div className="mt-3 rounded-lg border border-line bg-[var(--color-field)] p-3">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={hidePaid}
+                onChange={(e) => setHidePaid(e.target.checked)}
+                className="accent-[var(--color-ember)]"
+                disabled={!anyPricing}
+              />
+              <span className="text-[12.5px] text-cream">
+                Only show models that are free
+                {!anyPricing && <span className="ml-1.5 text-dust">— nothing loaded here publishes prices</span>}
+              </span>
+            </label>
+            {anyPricing && silentOnPricing.length > 0 && (
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-dust">
+                This cannot narrow{" "}
+                <span className="text-parch">{silentOnPricing.map((p) => p.label).join(", ")}</span> — those endpoints
+                return a model id and nothing else, no price and no capabilities. Rather than hide models on a guess
+                about their names, everything they list stays visible. Press a job's test button to find out what your
+                key can actually reach.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ---------- the three jobs ---------- */}
       {JOBS.map((job) => {
         const engine = settings[job.id];
-        const chosen = allModels.find((m) => m.model === engine.model);
+        // The vision card only offers models that can actually take a picture,
+        // where the provider says. Picking a text-only model there fails at the
+        // moment you need it, with an error about image parts that reads as a
+        // bug in the app.
+        const visionOnly = job.id === "vision";
+        const offered = visionOnly
+          ? allModels.filter((m) => m.providerIds.some((pid) => shownFor(pid, true).some((x) => x.id === m.model)))
+          : allModels;
+        const chosen = offered.find((m) => m.model === engine.model);
         const result = results[job.id];
         return (
           <div key={job.id} className="rounded-xl border border-line bg-panel/50 p-4">
@@ -209,8 +294,9 @@ export default function TextEngines({
               <select
                 value={engine.model}
                 onChange={(e) => {
-                  const picked = allModels.find((m) => m.model === e.target.value);
-                  const from = providers.find((p) => p.id === picked?.providerId);
+                  const picked = offered.find((m) => m.model === e.target.value);
+                  // When two accounts both serve a model, the first is used.
+                  const from = providers.find((p) => p.id === picked?.providerIds[0]);
                   // Take the account's address and key with the model, so the
                   // engine still works if that account is later removed.
                   patchSettings({
@@ -223,22 +309,31 @@ export default function TextEngines({
                 className={field}
               >
                 {engine.model && !chosen && <option value={engine.model}>{engine.model} (already set)</option>}
-                {allModels.length === 0 && <option value="">load an account's models above first</option>}
-                {providers.map((p) =>
-                  (models[p.id] ?? []).length > 0 ? (
+                {offered.length === 0 && (
+                  <option value="">
+                    {allModels.length === 0 ? "load an account's models above first" : "none of the loaded models can do this"}
+                  </option>
+                )}
+                {providers.map((p) => {
+                  // A model served by more than one account is listed under the
+                  // first that offers it, so it appears once rather than once
+                  // per key.
+                  const mine = offered.filter((m) => m.providerIds[0] === p.id);
+                  return mine.length > 0 ? (
                     <optgroup key={p.id} label={p.label}>
-                      {(models[p.id] ?? []).map((m) => (
-                        <option key={`${p.id}:${m}`} value={m}>
-                          {m}
+                      {mine.map((m) => (
+                        <option key={`${p.id}:${m.model}`} value={m.model}>
+                          {m.model}
+                          {m.providerLabels.length > 1 ? ` · also on ${m.providerLabels.slice(1).join(", ")}` : ""}
                         </option>
                       ))}
                     </optgroup>
-                  ) : null
-                )}
+                  ) : null;
+                })}
               </select>
               {engine.key.trim() ? (
                 <p className="mt-1.5 font-mono text-[10.5px] text-dust">
-                  using {chosen?.providerLabel ?? engine.base.replace(/^https?:\/\//, "")}
+                  using {chosen?.providerLabels[0] ?? engine.base.replace(/^https?:\/\//, "")}
                 </p>
               ) : (
                 <p className="mt-1.5 text-[11.5px] text-ember">no key yet — pick a model from an account above</p>

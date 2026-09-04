@@ -13,20 +13,33 @@ export default defineConfig({
     },
     proxy: {
       /**
-       * Cloudflare's API sends no CORS headers at all, so a browser refuses to
-       * call it — with or without a key. Verified on 2026-09-02: even an
-       * unauthenticated request throws "Failed to fetch" before it leaves the
-       * page. Everything else we talk to (Google, OpenAI, Mistral,
-       * Pollinations) allows it fine.
+       * Two providers will not talk to a browser, so their requests go through
+       * here. Node has no such rule, so the MCP server calls both directly.
        *
-       * So browser requests go through here instead. Node has no such rule, so
-       * the MCP server still calls Cloudflare directly.
+       * Cloudflare sends no CORS headers at all — verified 2026-09-02, even an
+       * unauthenticated request throws "Failed to fetch" before it leaves the
+       * page.
+       *
+       * NVIDIA answers the preflight 200 but with no Access-Control-Allow-Origin
+       * header, which a browser reads as a refusal — verified 4 September 2026.
+       * That is what "the NVIDIA account failed to fetch" was: not the key, not
+       * the address, and nothing a page can work around.
+       *
+       * Everything else we talk to (Google, OpenAI, Mistral, OpenRouter,
+       * Pollinations) sends the header and is called directly. Checked, not
+       * assumed.
        */
       "/cf-api": {
         target: "https://api.cloudflare.com",
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/cf-api/, ""),
+      },
+      "/nv-api": {
+        target: "https://integrate.api.nvidia.com",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/nv-api/, ""),
       },
     },
   },

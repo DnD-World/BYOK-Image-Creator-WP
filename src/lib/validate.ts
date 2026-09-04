@@ -1,5 +1,55 @@
 import type { Category, ManifestRow } from "../types";
 
+/**
+ * The extensions a forged file may legitimately carry.
+ *
+ * There is no single right one, which is the whole point. Cloudflare and the
+ * OpenAI-shaped engines return PNG; Google's image API refuses to return
+ * anything except JPEG; Pollinations sends whatever it feels like; vectors are
+ * .svg and Lottie is .json. A name is correct when it matches its own bytes,
+ * not when it matches a house rule.
+ */
+export const KNOWN_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".json"] as const;
+
+/** What a MIME type should be called on disk. */
+const MIME_EXTENSION: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/svg+xml": ".svg",
+  "application/json": ".json",
+};
+
+/** The extension a MIME type deserves, or "" when we do not recognise it. */
+export const extensionForMime = (mime: string): string =>
+  MIME_EXTENSION[(mime || "").split(";")[0].trim().toLowerCase()] ?? "";
+
+/** The extension a name currently carries, lowercased, or "". */
+export const extensionOf = (name: string): string => {
+  const lower = name.toLowerCase();
+  return KNOWN_EXTENSIONS.find((e) => lower.endsWith(e)) ?? "";
+};
+
+/**
+ * The same name, wearing the extension its bytes actually earned.
+ *
+ * Returns the name unchanged when it is already right, when the type is one we
+ * do not recognise, or when the difference is only jpg/jpeg — renaming a file
+ * over that would be noise. The stem never changes, so a row keeps its
+ * identity and nothing that matches rows to pictures has to care.
+ */
+export function nameForMime(name: string, mime: string): string {
+  const want = extensionForMime(mime);
+  if (!want) return name;
+  const have = extensionOf(name);
+  if (!have) return name + want;
+  if (have === want) return name;
+  if ((have === ".jpg" || have === ".jpeg") && want === ".jpg") return name;
+  return name.slice(0, -have.length) + want;
+}
+
 /** What the categories were called before they described the artefact. */
 const LEGACY_PREFIXES: string[] = ["shop_", "item_", "event_", "npc_"];
 
@@ -27,8 +77,13 @@ export interface RuleCheck {
  *   · nospecial — characters like \ / : * ? " < > | cannot appear in a
  *     Windows filename at all, so allowing them produces files that cannot
  *     be written.
- *   · ext — the engines return PNG, and a file named .jpg that holds PNG
- *     bytes confuses everything downstream.
+ *
+ * "ends with .png" used to be a third unswitchable rule, on the grounds that
+ * "the engines return PNG". They do not. Google's image API refuses to return
+ * anything but JPEG, and Pollinations sends whatever it likes — so that rule
+ * was writing a .png name onto JPEG bytes and calling it correctness. What an
+ * engine makes is what it makes. The rule is now optional and merely asks for
+ * SOME known extension; the true one is settled from the bytes at save time.
  */
 export const RULES: { id: string; label: string; why: string; optional: boolean }[] = [
   { id: "lowercase", label: "lowercase only", why: "so a file is never lost to a capital you forgot", optional: true },
@@ -36,7 +91,7 @@ export const RULES: { id: string; label: string; why: string; optional: boolean 
   { id: "nospecial", label: "no special characters", why: "Windows refuses these outright: \\ / : * ? < > |", optional: false },
   { id: "underscores", label: "words joined with underscores", why: "consistent word breaks make a list scannable", optional: true },
   { id: "prefix", label: "starts with what it makes", why: "so a name says what it is, and sorts with its kind", optional: true },
-  { id: "ext", label: "ends with .png", why: "the engines return PNG; a wrong extension misleads everything downstream", optional: false },
+  { id: "ext", label: "ends with a known extension", why: `so the name says what the file is — one of ${KNOWN_EXTENSIONS.join(", ")}`, optional: true },
   { id: "unique", label: "unique across the manifest", why: "two rows with one name means the second overwrites the first", optional: false },
 ];
 
@@ -94,7 +149,16 @@ export function validateFilename(
       // alone and still pass.
       pass: name.startsWith(category + "_") || (category === "image" && LEGACY_PREFIXES.some((lp) => name.startsWith(lp))),
     },
-    { id: "ext", enabled: on.ext, label: "ends with .png", pass: /\.png$/.test(name) },
+    {
+      id: "ext",
+      enabled: on.ext,
+      label: "ends with a known extension",
+      // Any of them, not .png specifically. The engine decides the format and
+      // then the save step corrects the name to match the bytes, so demanding
+      // .png here would only mark honest names broken.
+      pass: KNOWN_EXTENSIONS.some((e) => name.toLowerCase().endsWith(e)),
+      detail: `one of ${KNOWN_EXTENSIONS.join(", ")}`,
+    },
     {
       id: "unique",
       enabled: on.unique,
@@ -105,7 +169,11 @@ export function validateFilename(
 }
 
 export function autoFixFilename(raw: string, category: Category): string {
-  let base = raw.toLowerCase().replace(/\.png$/, "").trim();
+  // Whatever extension it already wears is kept. Forcing .png here is how a
+  // JPEG came to be called a PNG in the first place; if the name is bare we
+  // still have to guess something, and .png is the commonest truth.
+  const ext = extensionOf(raw) || ".png";
+  let base = raw.toLowerCase().slice(0, raw.length - (extensionOf(raw).length || 0)).trim();
   base = base.replace(/[\s\-]+/g, "_");
   base = base.replace(/[^a-z0-9_]/g, "");
   base = base.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
@@ -115,7 +183,7 @@ export function autoFixFilename(raw: string, category: Category): string {
     base = base.replace(/^(shop|item|event|npc)_/, "");
     base = prefix + base;
   }
-  return base + ".png";
+  return base + ext;
 }
 
 export function styleDriftCount(rows: ManifestRow[], locked: string): number {

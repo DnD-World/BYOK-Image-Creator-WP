@@ -21,7 +21,7 @@ type UpdateReady = {
 import { SEED_ROWS } from "./lib/seed";
 import { downloadCsv, parseCsv, rowsFromCsv, rowsToCsv } from "./lib/csv";
 import { renderPreview } from "./lib/preview";
-import { styleDriftCount, violationCount } from "./lib/validate";
+import { nameForMime, styleDriftCount, violationCount } from "./lib/validate";
 import {
   RateLimitError,
   RETIRED_MODELS,
@@ -448,19 +448,42 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
           pushLog(`· ${row.filename} halted mid-strike`, "info");
           return "stopped";
         }
-        imagesRef.current.set(row.filename, blob);
-        patchRow(id, { status: "done", generated_at: new Date().toISOString(), preview: dataUrl, error: "" });
-        pushLog(`✓ ${row.filename} struck · ${(blob.size / 1024).toFixed(0)} KB via ${route.engine}`, "ok");
+        /* The name now tells the truth about the bytes.
+           Engines do not agree on a format and never did: Cloudflare and the
+           OpenAI-shaped ones send PNG, Google's image API refuses to send
+           anything but JPEG, Pollinations sends what it likes. We used to
+           write every one of them out as .png, which meant a JPEG in a file
+           claiming to be a PNG — fine for anything that sniffs the bytes, a
+           real problem for WordPress uploads and strict tooling.
+           The stem never changes, so the row keeps its identity; only the
+           extension moves, and only when it is actually wrong. A rename that
+           would collide with another row is skipped rather than allowed to
+           overwrite it. */
+        let filename = row.filename;
+        const trueName = nameForMime(filename, blob.type);
+        if (trueName !== filename) {
+          const taken = rowsRef.current.some((r) => r.id !== id && r.filename === trueName);
+          if (taken) {
+            pushLog(`· ${filename} is really ${blob.type}, but ${trueName} is already taken — name left alone`, "info");
+          } else {
+            pushLog(`✎ ${filename} → ${trueName} (${route.engine} returned ${blob.type})`, "info");
+            filename = trueName;
+          }
+        }
+        const saved = { ...row, filename };
+        imagesRef.current.set(filename, blob);
+        patchRow(id, { filename, status: "done", generated_at: new Date().toISOString(), preview: dataUrl, error: "" });
+        pushLog(`✓ ${filename} struck · ${(blob.size / 1024).toFixed(0)} KB via ${route.engine}`, "ok");
         setSettings((prev) => ({ ...prev, usage: bumpUsage(prev.usage, modelId || s.provider) }));
         // The picture exists and is already counted. If writing it to the
         // folder fails — disk full, folder moved, permission withdrawn — say
         // so and keep the row done, rather than reporting the strike itself
         // as a failure and inviting a second paid attempt.
         try {
-          await saveToFolder(row, blob);
+          await saveToFolder(saved, blob);
         } catch (e) {
           const why = (e as { message?: string })?.message ?? "unknown reason";
-          pushLog(`⚠ ${row.filename} made, but not written to the folder — ${why}. Use Save all.`, "err");
+          pushLog(`⚠ ${filename} made, but not written to the folder — ${why}. Use Save all.`, "err");
         }
         return "done";
       } catch (e) {

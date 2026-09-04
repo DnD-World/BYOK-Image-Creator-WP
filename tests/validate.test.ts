@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFixFilename, RULES, validateFilename, violationCount } from "../src/lib/validate";
+import { autoFixFilename, nameForMime, RULES, validateFilename, violationCount } from "../src/lib/validate";
 import type { ManifestRow } from "../src/types";
 
 const check = (name: string, category: Parameters<typeof validateFilename>[1] = "shop", others: { id: number; filename: string }[] = []) =>
@@ -27,9 +27,11 @@ describe("validateFilename", () => {
     }
   });
 
-  it("requires the category prefix and the .png extension", () => {
+  it("requires the category prefix, and some recognisable extension", () => {
     expect(check("bakery.png").prefix).toBe(false);
-    expect(check("shop_bakery.jpg").ext).toBe(false);
+    // .jpg is a fine answer now — Google returns JPEG whatever we ask for.
+    expect(check("shop_bakery.jpg").ext).toBe(true);
+    expect(check("shop_bakery.txt").ext).toBe(false);
   });
 
   it("flags a name already used by another row", () => {
@@ -107,13 +109,14 @@ describe("switching filename rules off", () => {
     expect(checks.find((c) => c.id === "lowercase")?.enabled).toBe(false);
   });
 
-  it("refuses to switch off the three that protect your files", () => {
+  it("refuses to switch off the two that protect your files", () => {
     // unique: a second row with the same name overwrites the first when saved.
     // nospecial: Windows cannot write those characters at all.
-    // ext: the engines return PNG, whatever the name claims.
-    const tryAll = { unique: false, nospecial: false, ext: false };
+    // Both cost you work. Everything else is house style, including the
+    // extension — which used to be here on a premise that turned out false.
+    const tryAll = { unique: false, nospecial: false };
     const checks = validateFilename("bad?name.jpg", "image", [{ id: 2, filename: "bad?name.jpg" }], 1, tryAll);
-    for (const id of ["unique", "nospecial", "ext"]) {
+    for (const id of ["unique", "nospecial"]) {
       const c = checks.find((x) => x.id === id);
       expect(c?.enabled, id).toBe(true);
       expect(c?.pass, id).toBe(false);
@@ -127,13 +130,74 @@ describe("switching filename rules off", () => {
     }
   });
 
-  it("marks exactly three rules as unswitchable", () => {
-    expect(RULES.filter((r) => !r.optional).map((r) => r.id).sort()).toEqual(["ext", "nospecial", "unique"]);
+  it("marks exactly two rules as unswitchable", () => {
+    expect(RULES.filter((r) => !r.optional).map((r) => r.id).sort()).toEqual(["nospecial", "unique"]);
   });
 
   it("stops counting a row as broken once its rule is off", () => {
     const rows = [{ id: 1, filename: "image_A.png", category: "image" }] as never;
     expect(violationCount(rows)).toBe(1);
     expect(violationCount(rows, { lowercase: false })).toBe(0);
+  });
+});
+
+/**
+ * The extension tells the truth about the bytes.
+ *
+ * This used to be a rule that could not be switched off, justified by "the
+ * engines return PNG". They do not — Google's image API refuses to return
+ * anything but JPEG — so the rule was writing a false name and calling it
+ * correctness. These tests pin the honest behaviour: any known extension is
+ * acceptable, and the real one is settled from what came back.
+ */
+describe("the extension follows the bytes", () => {
+  it("no longer insists on .png", () => {
+    const jpg = validateFilename("image_a.jpg", "image", [], 1);
+    expect(jpg.find((c) => c.id === "ext")?.pass).toBe(true);
+  });
+
+  it("still objects to a name with no extension at all", () => {
+    const bare = validateFilename("image_a", "image", [], 1);
+    expect(bare.find((c) => c.id === "ext")?.pass).toBe(false);
+  });
+
+  it("can be switched off now, unlike before", () => {
+    const off = validateFilename("image_a", "image", [], 1, { ext: false });
+    expect(off.find((c) => c.id === "ext")?.pass).toBe(true);
+  });
+
+  it("renames a Google picture to what Google actually sent", () => {
+    // The specific case that made this necessary.
+    expect(nameForMime("image_a.png", "image/jpeg")).toBe("image_a.jpg");
+  });
+
+  it("leaves a name that is already right alone", () => {
+    expect(nameForMime("image_a.png", "image/png")).toBe("image_a.png");
+  });
+
+  it("does not churn a name over jpg versus jpeg", () => {
+    // Both are correct. Renaming a file to settle a spelling argument is noise.
+    expect(nameForMime("image_a.jpeg", "image/jpeg")).toBe("image_a.jpeg");
+  });
+
+  it("leaves the name alone when the type means nothing to us", () => {
+    // Better a name we cannot confirm than a name we invented.
+    expect(nameForMime("image_a.png", "application/octet-stream")).toBe("image_a.png");
+    expect(nameForMime("image_a.png", "")).toBe("image_a.png");
+  });
+
+  it("adds an extension to a bare name rather than replacing nothing", () => {
+    expect(nameForMime("image_a", "image/webp")).toBe("image_a.webp");
+  });
+
+  it("keeps the stem exactly, so a row keeps its identity", () => {
+    expect(nameForMime("image_a.long.name.png", "image/jpeg")).toBe("image_a.long.name.jpg");
+  });
+
+  it("keeps the extension a name already wears when auto-fixing", () => {
+    // Auto-fix used to force .png, which is how the lie got in.
+    expect(autoFixFilename("Image A.webp", "image")).toBe("image_a.webp");
+    // With nothing to go on, .png is still the commonest truth.
+    expect(autoFixFilename("a cat", "image")).toBe("image_a_cat.png");
   });
 });

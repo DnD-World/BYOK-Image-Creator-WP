@@ -1,6 +1,7 @@
 import type { ManifestRow, Toast } from "../types";
 import { STYLES } from "../types";
 import { blobToDataUrl } from "./output";
+import { routeBase } from "./visionEngine";
 import {
   generateBytes,
   MODELS,
@@ -456,7 +457,9 @@ export async function scribeChat(
   signal?: AbortSignal
 ): Promise<string> {
   if (!scribe.key.trim()) throw new Error("no text-engine key — set one in Settings → Text engines");
-  const base = scribe.base.replace(/\/+$/, "");
+  // Detours around providers that refuse browser callers (NVIDIA). A no-op
+  // for everyone else, and a no-op in Node where CORS does not exist.
+  const base = routeBase(scribe.base);
   const res = await fetchWithTimeout(
     `${base}/chat/completions`,
     {

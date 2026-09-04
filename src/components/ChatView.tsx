@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ForgeSettings } from "../lib/providers";
 import { scribeChat } from "../lib/providers";
 import { CHAT_SYSTEM } from "../lib/appFacts";
-import { listChatModels, probeChatModels } from "../lib/visionEngine";
+import { filterModels, listChatModels, probeChatModels } from "../lib/visionEngine";
 import { manifestDigest, modelListForPrompt, parseReply, styleListForPrompt, usableModels, type ChatPlan, type EditPreview, type RowEdit } from "../lib/chatPlan";
 import { styleById } from "../lib/styleCatalogue";
 import { MODELS } from "../lib/engines.mjs";
@@ -150,7 +150,11 @@ export default function ChatView({
       // Endpoints list everything they serve, including things that cannot
       // hold a conversation at all. Offering an embedding model as a chat
       // model is a guaranteed confusing failure.
-      if (r.ok) setModelChoices(r.models.filter((m) => !/embed|ocr|transcribe|tts|moderation|fim/i.test(m)));
+      //
+      // This used to be a regex over the model name. It is now the
+      // provider's own answer where the provider gives one, falling back to
+      // reading the name only where it does not — see filterModels.
+      if (r.ok) setModelChoices(filterModels(r.models).map((m) => m.id));
     });
     return () => {
       alive = false;

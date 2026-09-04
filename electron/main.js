@@ -47,23 +47,43 @@ function resolveDistDir() {
 }
 
 /**
- * Pass a /cf-api/... request straight through to Cloudflare and pipe the answer
- * back. Only the Authorization and Content-Type headers travel, so nothing else
- * about the machine leaks, and only api.cloudflare.com is ever reachable.
+ * The providers that will not talk to a browser, and the prefix each one
+ * answers to here.
+ *
+ * A CORS header is a server's permission for a web page to read its reply.
+ * Both of these decline: Cloudflare sends no such header at all, and NVIDIA
+ * answers a preflight 200 with no Access-Control-Allow-Origin, which the
+ * browser reads as "no" and reports as the unhelpful "Failed to fetch".
+ * Neither can be fixed from the page — checked against both, 4 September 2026.
+ *
+ * So those requests are forwarded from here, where the rule does not apply.
+ * The list is closed on purpose: this proxy can reach these two hosts and
+ * nothing else, so a bug in the page cannot turn it into an open relay.
  */
-function proxyToCloudflare(req, res) {
+const PROXIED = {
+  "/cf-api": { host: "api.cloudflare.com", name: "Cloudflare" },
+  "/nv-api": { host: "integrate.api.nvidia.com", name: "NVIDIA" },
+};
+
+/**
+ * Pass a proxied request straight through and pipe the answer back. Only the
+ * Authorization and Content-Type headers travel, so nothing else about the
+ * machine leaks.
+ */
+function proxyUpstream(prefix, req, res) {
   const https = require("node:https");
-  const target = req.url.replace(/^\/cf-api/, "");
+  const { host, name } = PROXIED[prefix];
+  const target = req.url.slice(prefix.length) || "/";
   const upstream = https.request(
     {
-      hostname: "api.cloudflare.com",
+      hostname: host,
       port: 443,
       path: target,
       method: req.method,
       headers: {
         ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}),
         ...(req.headers["content-type"] ? { "content-type": req.headers["content-type"] } : {}),
-        host: "api.cloudflare.com",
+        host,
       },
     },
     (up) => {
@@ -73,7 +93,7 @@ function proxyToCloudflare(req, res) {
   );
   upstream.on("error", (e) => {
     res.writeHead(502, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: `could not reach Cloudflare: ${e.message}` }));
+    res.end(JSON.stringify({ error: `could not reach ${name}: ${e.message}` }));
   });
   req.pipe(upstream);
 }
@@ -89,11 +109,12 @@ const PORTS = [47821, 47822, 47823, 47824, 47825];
 function startServer(distDir) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
-      // Cloudflare's API sends no CORS headers, so the page cannot call it
-      // directly. Forward those requests from here, where that rule does not
-      // apply. Mirrors the /cf-api proxy in vite.config.js used during `npm run dev`.
-      if ((req.url || "").startsWith("/cf-api/")) {
-        proxyToCloudflare(req, res);
+      // Cloudflare and NVIDIA both refuse browser callers. Forward those
+      // requests from here. Mirrors the proxies in vite.config.js used
+      // during `npm run dev`.
+      const proxied = Object.keys(PROXIED).find((p) => (req.url || "").startsWith(p + "/"));
+      if (proxied) {
+        proxyUpstream(proxied, req, res);
         return;
       }
 

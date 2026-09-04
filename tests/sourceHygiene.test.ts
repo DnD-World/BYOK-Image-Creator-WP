@@ -61,6 +61,20 @@ describe("source files parse the same everywhere", () => {
     expect(offenders, `use the escape \\uFEFF instead of the literal character in: ${offenders.join(", ")}`).toEqual([]);
   });
 
+  it("contains no raw control characters", async () => {
+    // A real one got in: ChatView.tsx held a literal backspace byte where the
+    // regex escape \b was meant, because a shell heredoc interpreted the
+    // escape before the file was written. It compiled, it ran, and the regex
+    // silently tested for something that can never appear in a model name.
+    // Anything below space other than tab and newline is a mistake here.
+    const control = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+    const offenders: string[] = [];
+    for (const f of allFiles) {
+      if (control.test(await readFile(f, "utf8"))) offenders.push(f);
+    }
+    expect(offenders, `write these as escapes rather than raw bytes: ${offenders.join(", ")}`).toEqual([]);
+  });
+
   it("contains no other invisible or direction-changing characters", async () => {
     // Zero-width spaces and bidirectional overrides are worse than a BOM: they
     // can make code read differently to a human than it does to the compiler.

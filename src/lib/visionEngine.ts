@@ -87,6 +87,35 @@ export const VISION_PRESETS: {
 
 const trimBase = (base: string) => base.trim().replace(/\/+$/, "");
 
+/** True inside the app's window; false in Node, where CORS does not exist. */
+const inBrowser = () => typeof window !== "undefined" && typeof document !== "undefined";
+
+/**
+ * Hosts a browser is not allowed to call, and where the app forwards them.
+ *
+ * NVIDIA answers a preflight with 200 and no Access-Control-Allow-Origin
+ * header, which the browser treats as a refusal and reports as "Failed to
+ * fetch" — nothing to do with the key or the address, and impossible to work
+ * around from the page. The app proxies it instead, the same way it already
+ * proxies Cloudflare. Verified 4 September 2026.
+ *
+ * In Node there is no such rule, so the address is used untouched.
+ */
+const NO_CORS: { host: string; prefix: string }[] = [
+  { host: "integrate.api.nvidia.com", prefix: "/nv-api" },
+];
+
+/** The address to actually call, detouring through the proxy when we must. */
+export function routeBase(base: string): string {
+  const trimmed = trimBase(base);
+  if (!inBrowser()) return trimmed;
+  for (const { host, prefix } of NO_CORS) {
+    const match = new RegExp(`^https?://${host.replace(/\./g, "\.")}`, "i");
+    if (match.test(trimmed)) return trimmed.replace(match, prefix);
+  }
+  return trimmed;
+}
+
 /** Providers phrase the same problem differently. Say what it means instead. */
 export function explainVisionFailure(status: number, body: string): string {
   const b = body.toLowerCase();
@@ -103,14 +132,146 @@ export function explainVisionFailure(status: number, body: string): string {
 }
 
 /**
+ * One model, with whatever the provider was willing to say about it.
+ *
+ * `null` means "not stated", and is deliberately different from `false`. The
+ * providers vary enormously in what they disclose:
+ *
+ *   · OpenRouter gives a price and a modality list for all 427 of its models,
+ *     so both questions can be answered exactly.
+ *   · Mistral gives a capabilities object, so "can it chat" and "can it see"
+ *     are answerable but the price is not.
+ *   · NVIDIA and Google's OpenAI-shaped endpoint give a bare id and nothing
+ *     else, so neither question is answerable.
+ *
+ * The rule that follows from this is in `filterModels`: a filter may only hide
+ * a model the provider positively said to hide. Guessing from the id would
+ * mean hiding the thing you were looking for, and no way to tell why.
+ */
+export interface ChatModel {
+  id: string;
+  /** true = free, false = costs money, null = the provider did not say */
+  free: boolean | null;
+  /** true = accepts images, false = text only, null = not stated */
+  vision: boolean | null;
+  /** true/false when the provider says; null when it says nothing */
+  chat: boolean | null;
+}
+
+/**
+ * A guess at whether an id belongs to something that cannot hold a
+ * conversation — and it IS a guess, used only where the provider disclosed
+ * nothing at all.
+ *
+ * NVIDIA and Google list embedding, reranking and speech models beside their
+ * chat models with no field to tell them apart. Offering those as a writing
+ * engine produces a failure whose error never says why, which is worse than a
+ * name-based rule being occasionally wrong. Where a provider does state its
+ * capabilities — Mistral, OpenRouter — this is never consulted.
+ */
+export const looksNonChat = (id: string): boolean =>
+  // Two lists on purpose. The first are unmistakable anywhere in a name:
+  // NVIDIA ships "nv-embedqa-e5-v5" and "rerank-qa-mistral-4b", so requiring a
+  // word boundary would miss exactly the models this is for.
+  /embed|rerank|moderation|whisper|transcribe/i.test(id) ||
+  // The second are short enough to appear inside ordinary words — "clip" in
+  // "eclipse", "stt" in almost anything — so they must stand alone.
+  /(^|[/\-_.])(tts|stt|ocr|fim|clip|guard)([/\-_.]|$)/i.test(id);
+
+const num = (v: unknown): number => {
+  const n = typeof v === "string" ? parseFloat(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : NaN;
+};
+
+/**
+ * Read one entry of a /models list, in whichever dialect it arrived.
+ *
+ * Every provider here speaks the OpenAI listing shape and then adds its own
+ * fields on top. We read the ones we recognise and shrug at the rest.
+ */
+export function readModelEntry(raw: unknown): ChatModel | null {
+  const m = (raw ?? {}) as Record<string, unknown>;
+  const id = typeof m.id === "string" ? m.id : "";
+  if (!id) return null;
+
+  let free: boolean | null = null;
+  let vision: boolean | null = null;
+  let chat: boolean | null = null;
+
+  // OpenRouter: pricing per token, as decimal strings.
+  const pricing = m.pricing as Record<string, unknown> | undefined;
+  if (pricing && (typeof pricing.prompt === "string" || typeof pricing.completion === "string")) {
+    const inCost = num(pricing.prompt);
+    const outCost = num(pricing.completion);
+    if (Number.isFinite(inCost) && Number.isFinite(outCost)) free = inCost === 0 && outCost === 0;
+  }
+
+  // OpenRouter: what it accepts and what it emits.
+  const arch = m.architecture as Record<string, unknown> | undefined;
+  const inputs = Array.isArray(arch?.input_modalities) ? (arch!.input_modalities as unknown[]) : null;
+  const outputs = Array.isArray(arch?.output_modalities) ? (arch!.output_modalities as unknown[]) : null;
+  if (inputs) vision = inputs.includes("image");
+  // A model that cannot emit text cannot hold a conversation, whatever else it
+  // does — the audio and image generators on OpenRouter are listed alongside
+  // the chat models and would otherwise look like valid choices.
+  if (outputs) chat = outputs.includes("text");
+
+  // Mistral: a capabilities object. This is what makes the writing engine
+  // usable there — mistral-embed, mistral-ocr-latest and mistral-moderation
+  // are all in the same list as the chat models and all fail identically if
+  // you pick one, with an error that does not say why.
+  const caps = m.capabilities as Record<string, unknown> | undefined;
+  if (caps) {
+    if (typeof caps.completion_chat === "boolean") chat = caps.completion_chat;
+    if (typeof caps.vision === "boolean") vision = caps.vision;
+  }
+
+  return { id, free, vision, chat };
+}
+
+/** What a filter is allowed to ask for. */
+export interface ModelFilter {
+  /** hide models the provider said cost money */
+  freeOnly?: boolean;
+  /** hide models the provider said cannot see pictures */
+  visionOnly?: boolean;
+}
+
+/**
+ * Apply a filter, hiding only what the provider positively told us to hide.
+ *
+ * A model whose price or modality is unstated always stays visible. That is
+ * the difference between a filter and a guess: NVIDIA discloses nothing, so
+ * "free only" leaves its list untouched rather than emptying it, and the UI
+ * says as much instead of implying the tick box did something.
+ */
+export function filterModels(models: ChatModel[], filter: ModelFilter = {}): ChatModel[] {
+  return models.filter((m) => {
+    if (m.chat === false) return false;
+    // Nothing was said, so fall back to reading the name — see looksNonChat.
+    if (m.chat === null && looksNonChat(m.id)) return false;
+    if (filter.freeOnly && m.free === false) return false;
+    if (filter.visionOnly && m.vision === false) return false;
+    return true;
+  });
+}
+
+/** Does the provider state whether its models can chat? */
+export const statesChat = (models: ChatModel[]): boolean => models.some((m) => m.chat !== null);
+/** Does this list say anything about price at all? Drives the UI's honesty. */
+export const statesPricing = (models: ChatModel[]): boolean => models.some((m) => m.free !== null);
+/** Does this list say anything about which models can see? */
+export const statesVision = (models: ChatModel[]): boolean => models.some((m) => m.vision !== null);
+
+/**
  * Ask the endpoint which models it has. Saves the user guessing an id, and
  * saves us shipping a list that goes stale.
  */
 export async function listChatModels(
   engine: VisionEngine,
   signal?: AbortSignal
-): Promise<{ ok: true; models: string[] } | { ok: false; problem: string }> {
-  const base = trimBase(engine.base);
+): Promise<{ ok: true; models: ChatModel[] } | { ok: false; problem: string }> {
+  const base = routeBase(engine.base);
   if (!base) return { ok: false, problem: "no address set" };
   let res: Response;
   try {
@@ -124,8 +285,11 @@ export async function listChatModels(
   const text = await res.text().catch(() => "");
   if (!res.ok) return { ok: false, problem: explainVisionFailure(res.status, text) };
   try {
-    const json = JSON.parse(text) as { data?: { id?: string }[] };
-    const models = (json.data ?? []).map((m) => m.id ?? "").filter(Boolean).sort();
+    const json = JSON.parse(text) as { data?: unknown[] };
+    const models = (json.data ?? [])
+      .map(readModelEntry)
+      .filter((m): m is ChatModel => m !== null)
+      .sort((a, b) => a.id.localeCompare(b.id));
     if (models.length === 0) return { ok: false, problem: "the endpoint listed no models" };
     return { ok: true, models };
   } catch {
@@ -145,9 +309,9 @@ export async function askVision(
   prompt: string,
   signal?: AbortSignal
 ): Promise<{ ok: true; text: string } | { ok: false; problem: string; status?: number; body?: string }> {
-  const base = trimBase(engine.base);
+  const base = routeBase(engine.base);
   if (!base) return { ok: false, problem: "no vision engine set — choose one in Settings → Vision" };
-  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(base);
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(engine.base.trim());
   if (!engine.key.trim() && !isLocal)
     return { ok: false, problem: "no vision key — add one in Settings → Vision" };
   if (!engine.model.trim())
@@ -234,7 +398,7 @@ export async function probeChatModels(
   onProgress?: (done: number, total: number, model: string, ok: boolean) => void,
   signal?: AbortSignal
 ): Promise<{ model: string; ok: boolean; why?: string }[]> {
-  const base = trimBase(engine.base);
+  const base = routeBase(engine.base);
   const out: { model: string; ok: boolean; why?: string }[] = [];
 
   for (let i = 0; i < models.length; i++) {
