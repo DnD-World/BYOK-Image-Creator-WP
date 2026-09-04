@@ -24,6 +24,7 @@ import {
 export interface ManifestViewProps {
   rows: ManifestRow[];
   allRows: ManifestRow[];
+  filenameRules: Record<string, boolean>;
   total: number;
   search: string;
   setSearch: (s: string) => void;
@@ -283,7 +284,7 @@ const field = "w-full rounded-lg border border-line bg-[var(--color-field)] px-3
 
 function RowDrawer(p: ManifestViewProps & { row: ManifestRow }) {
   const { row, updateRow, deleteRow, duplicateRow, generateOne, forceRetry, setToPending, markSkipped, markImported, downloadRow, openScribe, onSelect, compare, strikeVariant, keepVariant, discardVariant } = p;
-  const checks = validateFilename(row.filename, row.category, p.allRows.map((x) => ({ id: x.id, filename: x.filename })), row.id);
+  const checks = validateFilename(row.filename, row.category, p.allRows.map((x) => ({ id: x.id, filename: x.filename })), row.id, p.filenameRules);
   const bad = checks.filter((c) => !c.pass);
 
   return (

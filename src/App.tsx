@@ -1408,7 +1408,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
   }, [batchRows, statusFilter, catFilter, modelFilter, search]);
 
   const drift = useMemo(() => styleDriftCount(rows, styleLock), [rows, styleLock]);
-  const violations = useMemo(() => violationCount(rows), [rows]);
+  const violations = useMemo(() => violationCount(rows, settings.filenameRules), [rows, settings.filenameRules]);
   const queueLen = rows.filter((r) => r.status === "pending" || r.status === "failed").length;
   /* Batch is a Google-only trick, so only offer it when the waiting rows can use it. */
   const batchable = rows.filter((r) => {
@@ -1701,6 +1701,7 @@ function ForgeApp({ onOpenMarket }: { onOpenMarket?: () => void }) {
               <ManifestView
                 rows={filtered}
                 allRows={rows}
+                filenameRules={settings.filenameRules}
                 total={rows.length}
                 search={search}
                 setSearch={setSearch}

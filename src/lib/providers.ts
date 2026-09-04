@@ -116,6 +116,8 @@ export interface ForgeSettings {
    * working if a provider is later removed.
    */
   textProviders: { id: string; label: string; base: string; key: string }[];
+  /** which filename rules are enforced; anything missing counts as on */
+  filenameRules: Record<string, boolean>;
   /**
    * Engines switched off by hand. A provider having a bad month should not
    * cost you your key setup, and should not cost you thirty seconds per row
@@ -205,6 +207,7 @@ export const DEFAULT_SETTINGS: ForgeSettings = {
   coder: { base: "https://api.mistral.ai/v1", key: "", model: "codestral-latest" },
   vision: { base: "https://api.mistral.ai/v1", key: "", model: "mistral-medium-latest" },
   textProviders: [],
+  filenameRules: {},
   pausedEngines: [],
   cooldowns: {},
   usage: {},
@@ -247,6 +250,7 @@ export function normalizeSettings(s: Partial<ForgeSettings>): ForgeSettings {
     // engines and no provider list. Seed it from them, deduplicated, so an
     // existing setup arrives already filled in rather than looking empty.
     textProviders: Array.isArray(s.textProviders) && s.textProviders.length > 0 ? s.textProviders : seedProviders(s),
+    filenameRules: (s.filenameRules as Record<string, boolean>) ?? {},
     pausedEngines: Array.isArray(s.pausedEngines) ? s.pausedEngines : [],
     metaPrompts: { ...DEFAULT_SETTINGS.metaPrompts, ...(s.metaPrompts ?? {}) },
     github: { ...DEFAULT_SETTINGS.github, ...(s.github ?? {}) },

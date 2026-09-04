@@ -8,26 +8,81 @@ export interface RuleCheck {
   label: string;
   pass: boolean;
   detail?: string;
+  /** false when this rule is switched off, in which case pass is always true */
+  enabled?: boolean;
 }
+
+/**
+ * Which rules you can switch off, and which you cannot.
+ *
+ * Most of these are house style: they keep a hundred files findable a month
+ * later, and if your project wants capitals or hyphens that is your business.
+ *
+ * Three are not negotiable, and it is worth saying why rather than just
+ * greying them out:
+ *
+ *   · unique — two rows sharing a filename means the second silently
+ *     overwrites the first when they are saved. That is lost work, not a
+ *     style preference.
+ *   · nospecial — characters like \ / : * ? " < > | cannot appear in a
+ *     Windows filename at all, so allowing them produces files that cannot
+ *     be written.
+ *   · ext — the engines return PNG, and a file named .jpg that holds PNG
+ *     bytes confuses everything downstream.
+ */
+export const RULES: { id: string; label: string; why: string; optional: boolean }[] = [
+  { id: "lowercase", label: "lowercase only", why: "so a file is never lost to a capital you forgot", optional: true },
+  { id: "nospace", label: "no spaces", why: "spaces break URLs and shell commands", optional: true },
+  { id: "nospecial", label: "no special characters", why: "Windows refuses these outright: \\ / : * ? < > |", optional: false },
+  { id: "underscores", label: "words joined with underscores", why: "consistent word breaks make a list scannable", optional: true },
+  { id: "prefix", label: "starts with what it makes", why: "so a name says what it is, and sorts with its kind", optional: true },
+  { id: "ext", label: "ends with .png", why: "the engines return PNG; a wrong extension misleads everything downstream", optional: false },
+  { id: "unique", label: "unique across the manifest", why: "two rows with one name means the second overwrites the first", optional: false },
+];
+
+/** The rules that cannot be switched off, whatever the settings say. */
+const REQUIRED = new Set(RULES.filter((r) => !r.optional).map((r) => r.id));
+
+/** Turn the saved preferences into a straight yes/no per rule. */
+export const rulesEnabled = (prefs?: Record<string, boolean>): Record<string, boolean> =>
+  Object.fromEntries(RULES.map((r) => [r.id, REQUIRED.has(r.id) ? true : (prefs?.[r.id] ?? true)]));
 
 export function validateFilename(
   name: string,
   category: Category,
   allNames: { id: number; filename: string }[],
-  rowId: number
+  rowId: number,
+  /** which rules are switched on; anything omitted counts as on */
+  prefs?: Record<string, boolean>
 ): RuleCheck[] {
-  return [
-    { id: "lowercase", label: "lowercase only", pass: name.length > 0 && name === name.toLowerCase() },
-    { id: "nospace", label: "no spaces", pass: !/\s/.test(name) },
+  const on = rulesEnabled(prefs);
+  // A rule that is switched off reports as passing, so everything that counts
+  // failures — the sidebar, the auto-fix, the row badge — needs no knowledge
+  // of which rules exist.
+  const gate = (checks: RuleCheck[]): RuleCheck[] =>
+    checks.map((c) => (c.enabled === false ? { ...c, pass: true } : c));
+  return gate([
+    { id: "lowercase", enabled: on.lowercase, label: "lowercase only", pass: name.length > 0 && name === name.toLowerCase() },
+    { id: "nospace", enabled: on.nospace, label: "no spaces", pass: !/\s/.test(name) },
     {
       id: "nospecial",
+      enabled: on.nospecial,
       label: "no special characters",
-      pass: /^[a-z0-9_]+\.png$/.test(name),
-      detail: "only a–z, 0–9, underscores and a .png extension",
+      // Only characters a filesystem genuinely refuses.
+      //
+      // This used to be /^[a-z0-9_]+\.png$/, which also rejected capitals —
+      // so it silently did the lowercase rule's job as well. Since this one
+      // cannot be switched off, turning "lowercase only" off changed nothing,
+      // which is a rule that lies about what it does. Case belongs to the
+      // lowercase rule; spaces belong to the nospace rule; this one is about
+      // characters Windows cannot write.
+      pass: name.length > 0 && !/[<>:"/\\|?*\u0000-\u001f]/.test(name),
+      detail: "Windows refuses a filename containing \\ / : * ? < > | or a quote",
     },
-    { id: "underscores", label: "words joined with underscores", pass: !/--|-{2,}/.test(name) && !/__/.test(name) },
+    { id: "underscores", enabled: on.underscores, label: "words joined with underscores", pass: !/--|-{2,}/.test(name) && !/__/.test(name) },
     {
       id: "prefix",
+      enabled: on.prefix,
       label: `category prefix “${category}_”`,
       // Legacy prefixes count as valid for "image".
       //
@@ -39,13 +94,14 @@ export function validateFilename(
       // alone and still pass.
       pass: name.startsWith(category + "_") || (category === "image" && LEGACY_PREFIXES.some((lp) => name.startsWith(lp))),
     },
-    { id: "ext", label: "ends with .png", pass: /\.png$/.test(name) },
+    { id: "ext", enabled: on.ext, label: "ends with .png", pass: /\.png$/.test(name) },
     {
       id: "unique",
+      enabled: on.unique,
       label: "unique across the manifest",
       pass: name !== "" && !allNames.some((r) => r.id !== rowId && r.filename === name),
     },
-  ];
+  ]);
 }
 
 export function autoFixFilename(raw: string, category: Category): string {
@@ -66,7 +122,7 @@ export function styleDriftCount(rows: ManifestRow[], locked: string): number {
   return rows.filter((r) => r.style !== locked).length;
 }
 
-export function violationCount(rows: ManifestRow[]): number {
+export function violationCount(rows: ManifestRow[], prefs?: Record<string, boolean>): number {
   const names = rows.map((x) => ({ id: x.id, filename: x.filename }));
-  return rows.filter((r) => validateFilename(r.filename, r.category, names, r.id).some((c) => !c.pass)).length;
+  return rows.filter((r) => validateFilename(r.filename, r.category, names, r.id, prefs).some((c) => !c.pass)).length;
 }

@@ -4,6 +4,7 @@ import { ACCENTS, STYLES } from "../types";
 import type { ApiKey, ForgeSettings, ProviderId } from "../lib/providers";
 import { MODELS, MODEL_TRAITS, PROVIDER_META, formatCountdown, formatUsd, newKey, usedToday, scribeChat, SCRIBE_SYSTEMS } from "../lib/providers";
 import { SUBFOLDERS, fsSupported } from "../lib/output";
+import { RULES } from "../lib/validate";
 import {
   findDuplicateKeys,
   summarisePool,
@@ -1116,21 +1117,58 @@ export default function SettingsView({
         {section === "filenames" && (
           <>
             <H>Filenames</H>
-            <P>The seven rules every filename must pass. The drawer checks them live and auto-fixes with one click.</P>
+            <P className="max-w-2xl">
+              The rules every filename must pass. They are checked as you type and fixed with one click. Switch off any
+              that do not suit your project — three cannot be switched off, and each says why.
+            </P>
             <ul className="space-y-2">
-              {[
-                "lowercase only",
-                "no spaces",
-                "no special characters — only a–z, 0–9 and underscores",
-                "words joined with underscores",
-                "starts with its category prefix: shop_ · item_ · event_ · npc_",
-                "ends with .png",
-                "unique across the whole manifest",
-              ].map((r, i) => (
-                <li key={r} className="flex items-center gap-3 rounded-xl border border-line bg-panel/50 px-4 py-2.5 text-[13px] text-parch">
-                  <span className="font-display text-[15px] text-ember">{i + 1}</span> {r}
-                </li>
-              ))}
+              {RULES.map((rule, i) => {
+                const on = rule.optional ? (settings.filenameRules[rule.id] ?? true) : true;
+                return (
+                  <li
+                    key={rule.id}
+                    className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                      on ? "border-line bg-panel/50" : "border-line/50 bg-panel/20"
+                    }`}
+                  >
+                    <span className={`font-display text-[15px] ${on ? "text-ember" : "text-dust/50"}`}>{i + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-[13px] ${on ? "text-parch" : "text-dust/60 line-through"}`}>
+                        {rule.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11.5px] leading-snug text-dust">{rule.why}</span>
+                    </span>
+                    {rule.optional ? (
+                      <button
+                        onClick={() =>
+                          patchSettings({
+                            filenameRules: { ...settings.filenameRules, [rule.id]: !on },
+                          })
+                        }
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={rule.label}
+                        className={`mt-0.5 h-5 w-9 shrink-0 rounded-full border transition ${
+                          on ? "border-ember/60 bg-ember/30" : "border-line bg-panel2"
+                        }`}
+                      >
+                        <span
+                          className={`block h-3.5 w-3.5 rounded-full transition-transform ${
+                            on ? "translate-x-4 bg-ember" : "translate-x-0.5 bg-dust"
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <span
+                        className="mt-0.5 shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[9.5px] text-dust uppercase"
+                        title="This one protects your files, so it cannot be switched off."
+                      >
+                        always
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
